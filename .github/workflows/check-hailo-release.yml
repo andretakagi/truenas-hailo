@@ -27,13 +27,20 @@ jobs:
           LATEST=$(echo "$RELEASES_JSON" | python3 -c "
           import sys, json, re
 
+          # Hailo-8 support lives on hailort-drivers' \`hailo8\` branch (4.x line).
+          # The \`master\` branch tracks 5.x for Hailo-10/15 and does NOT support
+          # Hailo-8, so we must only consider tags whose major matches the
+          # currently-tracked version. Otherwise this workflow would surface
+          # 5.x releases that, if built, would silently produce a driver that
+          # does not work with Hailo-8.
+          known_major = '${KNOWN_VERSION}'.split('.')[0]
+
           tags = json.load(sys.stdin)
-          # Filter for version tags (v4.x.x pattern)
           versions = []
           for t in tags:
-              m = re.match(r'^v?(\d+\.\d+\.\d+)$', t['name'])
-              if m:
-                  versions.append(m.group(1))
+              m = re.match(r'^v?(\d+)\.(\d+)\.(\d+)$', t['name'])
+              if m and m.group(1) == known_major:
+                  versions.append('.'.join(m.groups()))
 
           if not versions:
               print('')
@@ -95,6 +102,11 @@ jobs:
               title: `New HailoRT driver available: ${newVersion}`,
               body: `A newer HailoRT driver has been detected: **${newVersion}**\n\n` +
                 `Source: https://github.com/hailo-ai/hailort-drivers/releases/tag/v${newVersion}\n\n` +
+                `> **Hailo-8 caveat:** This check only surfaces tags whose major matches ` +
+                `the currently-tracked version, since Hailo-8 support lives on the ` +
+                `\`hailo8\` branch of hailort-drivers (4.x line). Before building, confirm ` +
+                `the tag is actually reachable from the \`hailo8\` branch — the tags API ` +
+                `does not distinguish branches.\n\n` +
                 `To build with this driver, manually trigger the **Build Hailo Sysext** workflow with:\n` +
                 `- \`hailo_driver_version\`: \`${newVersion}\`\n\n` +
                 `After verifying the build, update \`.hailo-driver-version\` to track this as the new default.`,
