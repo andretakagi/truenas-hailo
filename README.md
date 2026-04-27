@@ -2,6 +2,8 @@
 
 A systemd-sysext package that adds [Hailo-8](https://hailo.ai/) AI accelerator support to TrueNAS SCALE. Primarily useful for running [Frigate NVR](https://frigate.video/) with hardware-accelerated AI object detection.
 
+> **Fork notice:** This is a fork of [scyto/truenas-hailo](https://github.com/scyto/truenas-hailo) — all of the original design, build pipeline, and sysext architecture is scyto's work. This fork ships a few targeted fixes (TrueNAS 25.10 NVIDIA-sysext overlay handling, fork-aware install script, fail-fast version detection) and tracks newer TrueNAS / HailoRT releases.
+
 ## Documentation
 
 | Doc | Contents |
@@ -121,6 +123,8 @@ MIT — see [LICENSE](LICENSE).
 The Hailo-8 firmware downloaded during installation is proprietary and subject to Hailo's EULA.
 
 ## Credits
+
+Original project: [scyto/truenas-hailo](https://github.com/scyto/truenas-hailo) by scyto. This repo is a downstream fork that adds a small set of fixes on top of that work.
 
 Build approach inspired by [truenas-nvidia-blackwell](https://github.com/scyto/truenas-nvidia-blackwell).
 
