@@ -41,14 +41,14 @@ The `hailo.raw` sysext contains:
 Auto-detects your TrueNAS version, downloads the matching release, fetches firmware from Hailo, and sets up persistence:
 
 ```bash
-curl -fsSL https://github.com/scyto/truenas-hailo/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/latest/download/install.sh | sudo bash -s -- --repo=andretakagi/truenas-hailo
 ```
 
 With an explicit pool for persistence:
 
 ```bash
-curl -fsSL https://github.com/scyto/truenas-hailo/releases/latest/download/install.sh -o install.sh
-sudo bash install.sh --pool=fast
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/latest/download/install.sh -o install.sh
+sudo bash install.sh --repo=andretakagi/truenas-hailo --pool=fast
 ```
 
 > **Version matching:** Each release is built for a specific TrueNAS kernel. The install script
@@ -66,7 +66,7 @@ sudo hailortcli fw-control identify     # Firmware responding
 ### Uninstall
 
 ```bash
-curl -fsSL https://github.com/scyto/truenas-hailo/releases/latest/download/restore.sh | sudo bash
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/latest/download/restore.sh | sudo bash
 ```
 
 ## Using with Frigate
