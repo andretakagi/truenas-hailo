@@ -12,7 +12,9 @@
 
 set -euo pipefail
 
-REPO="scyto/truenas-hailo"
+# REPO can be overridden via --repo=OWNER/NAME or HAILO_REPO env var
+# Default falls back to upstream
+REPO="${HAILO_REPO:-scyto/truenas-hailo}"
 SYSEXT_DIR="/usr/share/truenas/sysext-extensions"
 HAILO_RAW="${SYSEXT_DIR}/hailo.raw"
 
@@ -23,12 +25,15 @@ PERSIST_PATH=""
 
 for arg in "$@"; do
     case "$arg" in
+        --repo=*) REPO="${arg#*=}" ;;
         --pool=*) POOL_NAME="${arg#*=}" ;;
         --persist-path=*) PERSIST_PATH="${arg#*=}" ;;
         --help)
             echo "Usage: sudo ./install.sh [OPTIONS] [path-to-hailo.raw]"
             echo ""
             echo "Options:"
+            echo "  --repo=OWNER/NAME        GitHub repo to download release from (default: scyto/truenas-hailo)"
+            echo "                           Can also be set via HAILO_REPO env var."
             echo "  --pool=NAME              ZFS pool for persistent config (e.g., fast)"
             echo "  --persist-path=PATH      Exact path for persistent config"
             echo "  --help                   Show this help"
