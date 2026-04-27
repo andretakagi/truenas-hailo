@@ -8,15 +8,15 @@ To install from a specific release:
 
 ```bash
 # Download install.sh from a specific release tag
-curl -fsSL https://github.com/scyto/truenas-hailo/releases/download/v25.10.2.1-hailo4.21.0/install.sh | sudo bash
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/download/v25.10.3-hailo4.21.0/install.sh | sudo bash -s -- --repo=andretakagi/truenas-hailo
 ```
 
 Or download `hailo.raw` manually and install it:
 
 ```bash
 # Download hailo.raw from a specific release
-curl -fSL https://github.com/scyto/truenas-hailo/releases/download/v25.10.2.1-hailo4.21.0/hailo.raw -o /tmp/hailo.raw
-sudo bash install.sh /tmp/hailo.raw
+curl -fSL https://github.com/andretakagi/truenas-hailo/releases/download/v25.10.3-hailo4.21.0/hailo.raw -o /tmp/hailo.raw
+sudo bash install.sh --repo=andretakagi/truenas-hailo /tmp/hailo.raw
 ```
 
 > **Warning:** Using a `hailo.raw` built for a different TrueNAS version will fail to load
@@ -27,6 +27,7 @@ sudo bash install.sh /tmp/hailo.raw
 
 | Option | Description |
 | --- | --- |
+| `--repo=OWNER/NAME` | GitHub repo to download release from (default: `andretakagi/truenas-hailo`). Can also be set via `HAILO_REPO` env var. |
 | `--pool=NAME` | ZFS pool for persistent config (e.g., `fast`) |
 | `--persist-path=PATH` | Exact path for persistent config directory |
 | `--help` | Show usage help |
@@ -59,6 +60,7 @@ TrueNAS updates replace the rootfs, which wipes `/usr/` and any installed sysext
 /mnt/<pool>/.config/hailo/
 ├── hailo.raw                ← Sysext backup (includes firmware)
 ├── .hailo-driver-version    ← HailoRT version (informational)
+├── .hailo-repo              ← Source GitHub repo (used for error messages)
 └── hailo-preinit.sh         ← Boot script (registered as PREINIT)
 ```
 
