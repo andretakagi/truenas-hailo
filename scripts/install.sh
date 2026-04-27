@@ -140,8 +140,11 @@ if [ -z "$HAILO_VERSION" ]; then
     HAILO_VERSION=$(curl -sf "https://raw.githubusercontent.com/${REPO}/main/.hailo-driver-version" | tr -d '[:space:]') || true
 fi
 if [ -z "$HAILO_VERSION" ]; then
-    echo "WARNING: Could not determine HailoRT version, defaulting to 4.20.0"
-    HAILO_VERSION="4.20.0"
+    echo "ERROR: Could not determine HailoRT version."
+    echo "  Tag parse failed and ${REPO}/.hailo-driver-version could not be fetched."
+    echo "  Refusing to guess a firmware version — re-run with a release tag whose"
+    echo "  format matches v<truenas>-hailo<driver> (e.g., v25.10.3-hailo4.21.0)."
+    exit 1
 fi
 
 echo "HailoRT version: ${HAILO_VERSION}"
