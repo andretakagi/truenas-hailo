@@ -77,7 +77,7 @@ except Exception as e:
 
     # Find matching release
     echo "Searching for matching release..."
-    RELEASE_TAG=$(curl -sf "https://api.github.com/repos/${REPO}/releases" \
+    RELEASE_TAG=$(curl -sf --max-time 30 "https://api.github.com/repos/${REPO}/releases" \
         | python3 -c "
 import sys, json
 try:
@@ -98,7 +98,7 @@ except Exception as e:
     if [ -z "$RELEASE_TAG" ]; then
         echo "ERROR: No release found for TrueNAS version ${VERSION}"
         echo "Available releases:"
-        curl -sf "https://api.github.com/repos/${REPO}/releases" \
+        curl -sf --max-time 30 "https://api.github.com/repos/${REPO}/releases" \
             | python3 -c "import sys,json; [print(f'  {r[\"tag_name\"]}') for r in json.load(sys.stdin)]"
         exit 1
     fi
@@ -108,8 +108,8 @@ except Exception as e:
     # Download hailo.raw and checksum
     BASE_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}"
     echo "Downloading hailo.raw..."
-    curl -fSL "${BASE_URL}/hailo.raw" -o /tmp/hailo.raw || { echo "ERROR: Failed to download hailo.raw"; exit 1; }
-    curl -fSL "${BASE_URL}/hailo.raw.sha256" -o /tmp/hailo.raw.sha256 || { echo "ERROR: Failed to download checksum"; exit 1; }
+    curl -fSL --max-time 600 "${BASE_URL}/hailo.raw" -o /tmp/hailo.raw || { echo "ERROR: Failed to download hailo.raw"; exit 1; }
+    curl -fSL --max-time 600 "${BASE_URL}/hailo.raw.sha256" -o /tmp/hailo.raw.sha256 || { echo "ERROR: Failed to download checksum"; exit 1; }
 
     # Validate downloads are non-empty
     [ -s /tmp/hailo.raw ] || { echo "ERROR: hailo.raw is empty"; exit 1; }
@@ -139,7 +139,7 @@ if [ -n "${RELEASE_TAG:-}" ]; then
     HAILO_VERSION=$(echo "$RELEASE_TAG" | sed -n 's/.*hailo\([0-9.]*\)$/\1/p')
 fi
 if [ -z "$HAILO_VERSION" ]; then
-    HAILO_VERSION=$(curl -sf "https://raw.githubusercontent.com/${REPO}/main/.github/tracked-versions.json" \
+    HAILO_VERSION=$(curl -sf --max-time 30 "https://raw.githubusercontent.com/${REPO}/main/.github/tracked-versions.json" \
         | python3 -c "import sys,json; print(json.load(sys.stdin)['hailo']['driver'])" 2>/dev/null) || true
 fi
 if [ -z "$HAILO_VERSION" ]; then
@@ -154,7 +154,7 @@ echo "HailoRT version: ${HAILO_VERSION}"
 FW_URL="https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_VERSION}/FW/hailo8_fw.${HAILO_VERSION}.bin"
 
 echo "Downloading firmware from Hailo..."
-if ! curl -fSL "$FW_URL" -o /tmp/hailo8_fw.bin; then
+if ! curl -fSL --max-time 600 "$FW_URL" -o /tmp/hailo8_fw.bin; then
     echo "ERROR: Failed to download firmware from ${FW_URL}"
     echo "  Cannot install sysext without firmware — aborting."
     exit 1
