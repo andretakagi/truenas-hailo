@@ -1,0 +1,18 @@
+# Local Claude Code permissions and project notes (per-user, not for sharing)
+.claude/settings.local.json
+CLAUDE.md
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local build artifacts (this project builds in CI, not locally —
+# but if someone tries a local build, ignore the outputs)
+hailo.raw
+hailo.raw.sha256
+*.ko
+build/
