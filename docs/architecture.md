@@ -296,7 +296,7 @@ A single daily workflow (`check-releases.yml`, 06:00 UTC) watches both upstreams
 
 ### TrueNAS half
 
-Queries `truenas/scale-build` GitHub tags and picks the highest stable `TS-*` tag (skipping BETA/RC). The train name (`Goldeye`, future `Halibut`, etc.) is resolved live from `download.truenas.com`'s directory listing, so a train rollover happens automatically without anyone hardcoding a major.minor filter. Before bumping, the workflow sends a HEAD request against the matching ISO — `truenas/scale-build` can be tagged hours or days before iXsystems publishes the ISO, so a tag without a published ISO just defers the bump to the next run.
+Queries `truenas/scale-build` GitHub tags and picks the highest stable `TS-*` tag (skipping BETA/RC). The train name (`Goldeye`, future `Halibut`, etc. — current value lives in [`.github/tracked-versions.json`](../.github/tracked-versions.json)) is resolved live from `download.truenas.com`'s directory listing, so a train rollover happens automatically without anyone hardcoding a major.minor filter. Before bumping, the workflow sends a HEAD request against the matching ISO — `truenas/scale-build` can be tagged hours or days before iXsystems publishes the ISO, so a tag without a published ISO just defers the bump to the next run.
 
 A bump matters here because a new TrueNAS release may ship a different kernel, requiring a recompiled `hailo_pci.ko`.
 
