@@ -15,6 +15,14 @@ on:
         description: 'Train name (e.g., Goldeye)'
         required: true
         default: 'Goldeye'
+      mark_latest:
+        description: 'Mark this release as Latest on GitHub'
+        required: false
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+        default: 'true'
 
   workflow_call:
     inputs:
@@ -27,6 +35,10 @@ on:
       train_name:
         type: string
         required: true
+      mark_latest:
+        type: string
+        required: false
+        default: 'true'
 
 permissions:
   contents: write
@@ -466,5 +478,6 @@ jobs:
             scripts/restore.sh
           draft: false
           prerelease: false
+          make_latest: ${{ inputs.mark_latest }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

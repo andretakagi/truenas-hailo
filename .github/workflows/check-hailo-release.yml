@@ -95,7 +95,8 @@ jobs:
               inputs: {
                 truenas_version: '${{ steps.truenas.outputs.truenas_version }}',
                 hailo_driver_version: '${{ steps.check_driver.outputs.new_version }}',
-                train_name: '${{ steps.train.outputs.train }}'
+                train_name: '${{ steps.train.outputs.train }}',
+                mark_latest: 'false'
               }
             });
             console.log('Triggered build for HailoRT ${{ steps.check_driver.outputs.new_version }}');

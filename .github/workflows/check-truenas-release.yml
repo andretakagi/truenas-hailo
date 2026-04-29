@@ -102,7 +102,8 @@ jobs:
               inputs: {
                 truenas_version: '${{ steps.check_release.outputs.new_version }}',
                 hailo_driver_version: '${{ steps.hailo.outputs.hailo_version }}',
-                train_name: '${{ steps.train.outputs.train }}'
+                train_name: '${{ steps.train.outputs.train }}',
+                mark_latest: 'false'
               }
             });
             console.log('Triggered build for TrueNAS ${{ steps.check_release.outputs.new_version }}');
