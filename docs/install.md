@@ -74,6 +74,18 @@ The install script selects a pool in this order:
 
 The PREINIT script finds the config at boot by scanning `/mnt/*/.config/hailo/`, so it works even if the pool name changes.
 
+## Uninstalling
+
+To remove the sysext and undo persistence, download `restore.sh` from the matching release and run it as root:
+
+```bash
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/download/v25.10.3-hailo4.21.0/restore.sh | sudo bash
+```
+
+The script unloads `hailo_pci`, unmerges the sysext, removes `hailo.raw` from `/usr/share/truenas/sysext-extensions/`, deregisters the PREINIT init script via `midclt`, and deletes `/mnt/*/.config/hailo/`. After it finishes, a reboot returns the system to its pre-install state.
+
+Use this if you're decommissioning the Hailo-8, switching forks, or recovering from a broken install. A TrueNAS update by itself does not require running `restore.sh` — the PREINIT script handles re-merging the sysext automatically.
+
 ## Scripts Reference
 
 | Script | Purpose |
