@@ -21,7 +21,7 @@ This means we can skip scale-build entirely, reducing build time from ~5-6 hours
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Single GitHub Actions Job (ubuntu-22.04, ~15-30 min)        │
+│  Single GitHub Actions Job (runner resolved per-build)       │
 │                                                              │
 │  1. Download TrueNAS ISO (cached)                            │
 │  2. Extract kernel headers from nested squashfs (cached)     │
@@ -36,9 +36,19 @@ This means we can skip scale-build entirely, reducing build time from ~5-6 hours
 
 ### Build Environment
 
-The build runs on **ubuntu-22.04** specifically for GLIBC compatibility. TrueNAS SCALE is Debian Bookworm-based (GLIBC 2.36). Ubuntu 24.04 has GLIBC 2.39, which produces binaries that won't run on TrueNAS. Ubuntu 22.04 (GLIBC 2.35) produces forward-compatible binaries.
+The runner image is resolved per-build so it stays compatible with whatever Debian release TrueNAS is on (the runner's GLIBC must be ≤ the TrueNAS rootfs's). Today TrueNAS is on Debian Bookworm (GLIBC 2.36) and the resolver picks **ubuntu-22.04** (GLIBC 2.35); Ubuntu 24.04 (GLIBC 2.39) would produce binaries that won't run on TrueNAS.
 
 The kernel module is compiled with **gcc-12** because the TrueNAS kernel was built with GCC 12, which uses `-ftrivial-auto-var-init=zero` — a flag not supported by GCC 11 (ubuntu-22.04's default). The userspace components (hailortcli, libhailort) are built with the default GCC 11, which is fine for GLIBC compatibility.
+
+#### Build runner resolution
+
+Both auto-bump check workflows resolve the runner before dispatching `build.yml`, then pass it as an input. The lookup is two cheap fetches against TrueNAS's own published build metadata (no ISO download needed):
+
+1. `download.truenas.com/TrueNAS-SCALE-<train>/<version>/GITMANIFEST` (~2 KB) pins the `truenas-build` commit that produced the ISO.
+2. `raw.githubusercontent.com/truenas/truenas-build/<sha>/conf/build.manifest` declares `debian_release:` (e.g. `"bookworm"`).
+3. A `case` statement in `.github/scripts/resolve-runner.sh` maps the Debian release to an Ubuntu runner image with a compatible GLIBC.
+
+When TrueNAS rebases onto a new Debian release, the auto-bump checks fail loud (`::error::unknown debian_release '<codename>'`) on the first scheduled run after the rebase. The fix is a one-line addition to the `case` statement — detection is automated, the actual mapping decision stays human.
 
 ### Caching Strategy
 
@@ -286,7 +296,7 @@ Both check workflows run daily and dispatch `build.yml` with `mark_latest='false
 
 ### TrueNAS Releases (daily, 06:15 UTC)
 
-Queries `truenas/scale-build` GitHub tags for new `TS-25.10.*` stable releases. When a newer tag is found, the workflow first sends a HEAD request against the matching ISO at `download.truenas.com`. If the ISO is published, it bumps `version` and dispatches the build. If not, it logs and waits for the next run — `truenas/scale-build` can be tagged hours or days before iXsystems publishes the ISO.
+Queries `truenas/scale-build` GitHub tags and picks the highest stable `TS-*` tag (skipping BETA/RC). The train name (`Goldeye`, future `Halibut`, etc.) is resolved live from `download.truenas.com`'s directory listing, so a train rollover happens automatically without anyone hardcoding a major.minor filter. Before bumping, the workflow sends a HEAD request against the matching ISO — `truenas/scale-build` can be tagged hours or days before iXsystems publishes the ISO, so a tag without a published ISO just defers the bump to the next run.
 
 This rebuild matters because a new TrueNAS release may ship a different kernel, requiring a recompiled `hailo_pci.ko`.
 
@@ -302,7 +312,7 @@ When a newer hailo8-reachable tag is found, the workflow bumps `.hailo-driver-ve
 | --- | --- | --- |
 | Build system | Full scale-build (126 packages) | Standalone (kernel module + cmake) |
 | Build time | ~5-6 hours (cached: ~1.5h) | ~15-30 minutes (cached: ~5 min) |
-| Build runner | ubuntu-22.04 | ubuntu-22.04 |
+| Build runner | ubuntu-22.04 | resolved per-build (currently ubuntu-22.04 for Bookworm) |
 | Jobs | 2 (packages + update) | 1 |
 | Caching | 3 granular caches (~4.2 GB) | 3 caches (ISO + headers + hailort) |
 | Kernel module | Part of NVIDIA .run installer | `make` against kernel headers |

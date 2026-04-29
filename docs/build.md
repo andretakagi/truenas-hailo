@@ -11,7 +11,7 @@ Unlike the [NVIDIA sysext](https://github.com/scyto/truenas-nvidia-blackwell) wh
 5. Builds HailoRT userspace (libhailort, hailortcli) from source
 6. Packages everything as a squashfs sysext image (without firmware)
 
-The build runs on ubuntu-22.04 for GLIBC compatibility with TrueNAS (Debian Bookworm).
+The runner image is resolved per-build from TrueNAS's published Debian release (`bookworm` → `ubuntu-22.04`), so binaries link against a GLIBC that's no newer than the TrueNAS rootfs's. See [Build runner resolution](architecture.md#build-runner-resolution) for the lookup path.
 
 ## Firmware Handling
 
@@ -59,4 +59,4 @@ If you need a build for a TrueNAS version or HailoRT version that doesn't have a
 
 ### Version Defaults
 
-The workflow inputs have defaults set to the most recently tested versions. The `version` and `.hailo-driver-version` files in the repo track what the automated workflows use. Update these if you want `workflow_dispatch` defaults to match your target.
+The `workflow_dispatch` inputs default to the currently tracked combination — `version`, `.hailo-driver-version`, `train`, and the runner resolved from TrueNAS's Debian release. The defaults are kept in lockstep automatically: every auto-bump commit invokes `.github/scripts/sync-build-defaults.sh` to rewrite `build.yml`'s defaults alongside the tracked-version files, so a manual "Run workflow" always pre-fills the latest known-good combo. You can still override any field at dispatch time if you want a different target.
