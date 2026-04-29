@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  issues: write
+  contents: write
+  actions: write
 
 jobs:
   check:
@@ -54,39 +54,48 @@ jobs:
             echo "new_driver=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Check if issue already exists
+      - name: Read TrueNAS version
         if: steps.check_driver.outputs.new_driver == 'true'
-        id: existing_issue
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const newVersion = '${{ steps.check_driver.outputs.new_version }}';
-            const issues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'all',
-              labels: 'hailo-driver-update',
-              per_page: 100
-            });
-            const exists = issues.data.some(i => i.title.includes(newVersion));
-            core.setOutput('exists', exists.toString());
+        id: truenas
+        run: |
+          echo "truenas_version=$(cat version | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Create issue for new Hailo driver
-        if: steps.check_driver.outputs.new_driver == 'true' && steps.existing_issue.outputs.exists == 'false'
+      - name: Read train name
+        if: steps.check_driver.outputs.new_driver == 'true'
+        id: train
+        run: |
+          echo "train=$(cat train | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Update tracked driver version
+        if: steps.check_driver.outputs.new_driver == 'true'
+        run: |
+          echo -n "${{ steps.check_driver.outputs.new_version }}" > .hailo-driver-version
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .hailo-driver-version
+          git commit -m "Update tracked HailoRT driver version to ${{ steps.check_driver.outputs.new_version }}" || {
+            echo "ERROR: Failed to commit driver version update"
+            exit 1
+          }
+          git push || {
+            echo "ERROR: Failed to push driver version update"
+            exit 1
+          }
+
+      - name: Trigger build for new HailoRT driver
+        if: steps.check_driver.outputs.new_driver == 'true'
         uses: actions/github-script@v7
         with:
           script: |
-            const newVersion = '${{ steps.check_driver.outputs.new_version }}';
-            await github.rest.issues.create({
+            await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `New HailoRT driver available: ${newVersion}`,
-              body: `A newer HailoRT driver has been detected: **${newVersion}**\n\n` +
-                `Source: https://github.com/hailo-ai/hailort-drivers/releases/tag/v${newVersion}\n\n` +
-                `This tag has been verified to be reachable from the \`hailo8\` branch ` +
-                `(the 4.x line that supports Hailo-8).\n\n` +
-                `To build with this driver, manually trigger the **Build Hailo Sysext** workflow with:\n` +
-                `- \`hailo_driver_version\`: \`${newVersion}\`\n\n` +
-                `After verifying the build on real Hailo-8 hardware, update \`.hailo-driver-version\` to track this as the new default.`,
-              labels: ['hailo-driver-update']
+              workflow_id: 'build.yml',
+              ref: 'main',
+              inputs: {
+                truenas_version: '${{ steps.truenas.outputs.truenas_version }}',
+                hailo_driver_version: '${{ steps.check_driver.outputs.new_version }}',
+                train_name: '${{ steps.train.outputs.train }}'
+              }
             });
+            console.log('Triggered build for HailoRT ${{ steps.check_driver.outputs.new_version }}');
