@@ -59,28 +59,37 @@ jobs:
           #     a Frigate bug we want surfaced, not papered over.
           set -o pipefail
 
+          # All error paths below emit a `::error::` workflow command in
+          # addition to stderr context. Annotations surface at the top of
+          # the run summary and in the failure-notification email subject,
+          # so a silently-broken pin parser shows up loudly instead of
+          # being buried in step logs.
           parse_frigate_pin() {
             local url="$1"
             local label="$2"
             local content line value
-            content=$(curl -fsSL "$url") || {
+            if ! content=$(curl -fsSL "$url"); then
+              echo "::error title=Frigate pin parser::curl failed fetching ${label} (${url})"
               echo "ERROR: curl failed fetching ${label}: ${url}" >&2
               return 1
-            }
+            fi
             # Match `hailo_version="X.Y.Z"` or `hailo_version=X.Y.Z` with
             # optional surrounding whitespace and optional double or single
             # quotes. Anchored to start-of-line modulo whitespace; ignores
-            # trailing comments.
+            # trailing comments. Comment lines (`# hailo_version=...`) are
+            # excluded because `#` is not whitespace.
             line=$(printf '%s\n' "$content" \
               | grep -E '^[[:space:]]*hailo_version[[:space:]]*=' \
               || true)
             if [ -z "$line" ]; then
+              echo "::error title=Frigate pin parser::${label} contains no hailo_version assignment"
               echo "ERROR: ${label} contains no hailo_version assignment" >&2
               return 1
             fi
             local count
             count=$(printf '%s\n' "$line" | wc -l | tr -d ' ')
             if [ "$count" -ne 1 ]; then
+              echo "::error title=Frigate pin parser::${label} has ${count} active hailo_version assignments (expected 1)"
               echo "ERROR: ${label} has ${count} hailo_version assignments (expected 1):" >&2
               printf '%s\n' "$line" >&2
               return 1
@@ -88,6 +97,7 @@ jobs:
             value=$(printf '%s\n' "$line" \
               | sed -E 's/^[[:space:]]*hailo_version[[:space:]]*=[[:space:]]*["'"'"']?([^"'"'"' #]+)["'"'"']?.*$/\1/')
             if ! printf '%s' "$value" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error title=Frigate pin parser::${label} hailo_version is not a clean X.Y.Z release: '${value}'"
               echo "ERROR: ${label} hailo_version is not a clean X.Y.Z release: '${value}'" >&2
               echo "  raw line: ${line}" >&2
               return 1
@@ -96,14 +106,24 @@ jobs:
             printf '%s' "$value"
           }
 
-          FRIGATE_MAIN_PIN=$(parse_frigate_pin \
-            "https://raw.githubusercontent.com/blakeblackshear/frigate/dev/docker/main/install_hailort.sh" \
-            "frigate dev docker/main/install_hailort.sh")
-          FRIGATE_HAILO8L_PIN=$(parse_frigate_pin \
-            "https://raw.githubusercontent.com/blakeblackshear/frigate/dev/docker/hailo8l/user_installation.sh" \
-            "frigate dev docker/hailo8l/user_installation.sh")
+          # Capture each pin via explicit `if !` so failure propagates
+          # unambiguously regardless of bash's inherit_errexit setting in
+          # command substitutions. Belt and suspenders alongside `set -e`.
+          if ! FRIGATE_MAIN_PIN=$(parse_frigate_pin \
+              "https://raw.githubusercontent.com/blakeblackshear/frigate/dev/docker/main/install_hailort.sh" \
+              "frigate dev docker/main/install_hailort.sh"); then
+            echo "::error title=Frigate pin parser::failed to parse docker/main/install_hailort.sh — refusing to bump"
+            exit 1
+          fi
+          if ! FRIGATE_HAILO8L_PIN=$(parse_frigate_pin \
+              "https://raw.githubusercontent.com/blakeblackshear/frigate/dev/docker/hailo8l/user_installation.sh" \
+              "frigate dev docker/hailo8l/user_installation.sh"); then
+            echo "::error title=Frigate pin parser::failed to parse docker/hailo8l/user_installation.sh — refusing to bump"
+            exit 1
+          fi
 
           if [ "$FRIGATE_MAIN_PIN" != "$FRIGATE_HAILO8L_PIN" ]; then
+            echo "::error title=Frigate pins disagree::install_hailort.sh=${FRIGATE_MAIN_PIN}, user_installation.sh=${FRIGATE_HAILO8L_PIN} — refusing to guess which is canonical"
             echo "ERROR: Frigate's two HailoRT pins disagree:" >&2
             echo "  docker/main/install_hailort.sh         = ${FRIGATE_MAIN_PIN}" >&2
             echo "  docker/hailo8l/user_installation.sh    = ${FRIGATE_HAILO8L_PIN}" >&2
