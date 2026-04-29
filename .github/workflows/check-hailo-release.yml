@@ -39,18 +39,41 @@ jobs:
 
           echo "Latest available version: ${LATEST}"
 
-          if [ -n "$LATEST" ] && [ "$LATEST" != "$KNOWN_VERSION" ]; then
-            HIGHER=$(printf '%s\n%s\n' "$KNOWN_VERSION" "$LATEST" | sort -V | tail -n1)
-            if [ "$HIGHER" = "$LATEST" ]; then
-              echo "Newer version found: ${LATEST}"
+          # Frigate enforces exact-match between the host kernel module and its
+          # bundled libhailort (HailoRT returns HAILO_INVALID_DRIVER_VERSION(76)
+          # otherwise). The tracked driver must not move ahead of the version
+          # pinned in Frigate's docker/main/install_hailort.sh on the dev
+          # branch — doing so bricks every currently-shipping Frigate the
+          # moment a user reboots into the new sysext.
+          FRIGATE_PIN=$(curl -fsSL \
+            https://raw.githubusercontent.com/blakeblackshear/frigate/dev/docker/main/install_hailort.sh \
+            | grep -E '^hailo_version=' \
+            | head -n1 \
+            | sed -E 's/^hailo_version="?([0-9]+\.[0-9]+\.[0-9]+)"?.*/\1/')
+
+          if [ -z "$FRIGATE_PIN" ]; then
+            echo "ERROR: Could not parse hailo_version from Frigate's install_hailort.sh"
+            exit 1
+          fi
+          echo "Frigate pinned version: ${FRIGATE_PIN}"
+
+          # Cap the candidate at the Frigate pin so we never bump past what
+          # Frigate's userspace can talk to.
+          CANDIDATE=$(printf '%s\n%s\n' "$LATEST" "$FRIGATE_PIN" | sort -V | head -n1)
+          echo "Capped candidate version: ${CANDIDATE}"
+
+          if [ -n "$CANDIDATE" ] && [ "$CANDIDATE" != "$KNOWN_VERSION" ]; then
+            HIGHER=$(printf '%s\n%s\n' "$KNOWN_VERSION" "$CANDIDATE" | sort -V | tail -n1)
+            if [ "$HIGHER" = "$CANDIDATE" ]; then
+              echo "Newer version found: ${CANDIDATE} (Hailo latest: ${LATEST}, Frigate pin: ${FRIGATE_PIN})"
               echo "new_driver=true" >> "$GITHUB_OUTPUT"
-              echo "new_version=${LATEST}" >> "$GITHUB_OUTPUT"
+              echo "new_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
             else
-              echo "No newer version"
+              echo "No newer version (tracked is ahead of Frigate pin — wait for Frigate to move)"
               echo "new_driver=false" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "No newer version"
+            echo "No newer version (Hailo latest: ${LATEST}, Frigate pin: ${FRIGATE_PIN})"
             echo "new_driver=false" >> "$GITHUB_OUTPUT"
           fi
 
