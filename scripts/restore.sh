@@ -18,7 +18,7 @@ fi
 
 # Remove hailo sysext symlink and unmerge so /usr can be remounted writable.
 # Plain `systemd-sysext refresh` would re-merge any other active sysexts (e.g.
-# the NVIDIA sysext on TrueNAS 25.10), which keeps the /usr overlay in place
+# the NVIDIA sysext on TrueNAS SCALE), which keeps the /usr overlay in place
 # and makes the upcoming `zfs set readonly=off` fail.
 echo "Removing hailo sysext..."
 rm -f /run/extensions/hailo.raw

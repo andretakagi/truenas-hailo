@@ -169,9 +169,14 @@ jobs:
         if: steps.check_driver.outputs.new_driver == 'true'
         run: |
           echo -n "${{ steps.check_driver.outputs.new_version }}" > .hailo-driver-version
+          # Keep build.yml's manual-dispatch default aligned with the
+          # tracked driver so the next human-run build pre-fills the
+          # latest value. Fails loudly if the YAML structure shifts.
+          python3 .github/scripts/sync-build-defaults.py \
+            "hailo_driver_version=${{ steps.check_driver.outputs.new_version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .hailo-driver-version
+          git add .hailo-driver-version .github/workflows/build.yml
           git commit -m "Update tracked HailoRT driver version to ${{ steps.check_driver.outputs.new_version }}" || {
             echo "ERROR: Failed to commit driver version update"
             exit 1

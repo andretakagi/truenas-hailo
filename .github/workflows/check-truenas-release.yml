@@ -184,9 +184,15 @@ jobs:
         run: |
           echo -n "${{ steps.check_release.outputs.new_version }}" > version
           echo -n "${{ steps.check_release.outputs.new_train }}" > train
+          # Keep build.yml's manual-dispatch defaults aligned with the
+          # tracked combo so the next human-run build pre-fills the
+          # latest values. Fails loudly if the YAML structure shifts.
+          python3 .github/scripts/sync-build-defaults.py \
+            "truenas_version=${{ steps.check_release.outputs.new_version }}" \
+            "train_name=${{ steps.check_release.outputs.new_train }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version train
+          git add version train .github/workflows/build.yml
           # Compose a message that reflects whether train changed, so the
           # auto-bump log is self-explanatory in `git log`.
           if git diff --cached --name-only | grep -q '^train$'; then

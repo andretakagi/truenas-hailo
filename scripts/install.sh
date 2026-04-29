@@ -132,7 +132,7 @@ echo "=== Downloading Hailo-8 firmware ==="
 # Determine HailoRT version from release tag or .hailo-driver-version
 HAILO_VERSION=""
 if [ -n "${RELEASE_TAG:-}" ]; then
-    # Extract version from tag like v25.10.2.1-hailo4.20.0
+    # Extract HailoRT version from tag of the form v<truenas>-hailo<driver>.
     HAILO_VERSION=$(echo "$RELEASE_TAG" | sed -n 's/.*hailo\([0-9.]*\)$/\1/p')
 fi
 if [ -z "$HAILO_VERSION" ]; then
@@ -143,7 +143,7 @@ if [ -z "$HAILO_VERSION" ]; then
     echo "ERROR: Could not determine HailoRT version."
     echo "  Tag parse failed and ${REPO}/.hailo-driver-version could not be fetched."
     echo "  Refusing to guess a firmware version — re-run with a release tag whose"
-    echo "  format matches v<truenas>-hailo<driver> (e.g., v25.10.3-hailo4.21.0)."
+    echo "  format matches v<truenas>-hailo<driver>."
     exit 1
 fi
 

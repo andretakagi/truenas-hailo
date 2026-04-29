@@ -2,17 +2,23 @@ name: Build Hailo Sysext
 
 on:
   workflow_dispatch:
+    # Defaults below are kept in sync with the tracked-version files
+    # (`version`, `.hailo-driver-version`, `train`) by
+    # .github/scripts/sync-build-defaults.py, which the scheduled
+    # auto-bump workflows invoke after writing those files. A manual
+    # dispatch from the Actions UI therefore pre-fills the latest
+    # tracked combination; the user can still override any field.
     inputs:
       truenas_version:
-        description: 'TrueNAS version (e.g., 25.10.2.1)'
+        description: 'TrueNAS version'
         required: true
-        default: '25.10.2.1'
+        default: '25.10.3'
       hailo_driver_version:
-        description: 'HailoRT driver version (e.g., 4.20.0)'
+        description: 'HailoRT driver version'
         required: true
-        default: '4.20.0'
+        default: '4.21.0'
       train_name:
-        description: 'Train name (e.g., Goldeye)'
+        description: 'Train name'
         required: true
         default: 'Goldeye'
       mark_latest:
