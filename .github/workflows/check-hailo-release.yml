@@ -165,15 +165,30 @@ jobs:
         run: |
           echo "train=$(cat train | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve build runner from TrueNAS Debian release
+        if: steps.check_driver.outputs.new_driver == 'true'
+        id: resolve_runner
+        run: |
+          # Hailo bumps don't change the TrueNAS version, but the runner
+          # still has to match the tracked TrueNAS release. Resolving
+          # here keeps the dispatched build self-consistent and the
+          # build.yml manual-dispatch default in sync.
+          RUNNER=$(.github/scripts/resolve-runner.sh \
+            "${{ steps.train.outputs.train }}" \
+            "${{ steps.truenas.outputs.truenas_version }}")
+          echo "runner=${RUNNER}" >> "$GITHUB_OUTPUT"
+
       - name: Update tracked driver version
         if: steps.check_driver.outputs.new_driver == 'true'
         run: |
           echo -n "${{ steps.check_driver.outputs.new_version }}" > .hailo-driver-version
-          # Keep build.yml's manual-dispatch default aligned with the
-          # tracked driver so the next human-run build pre-fills the
-          # latest value. Fails loudly if the YAML structure shifts.
-          python3 .github/scripts/sync-build-defaults.py \
-            "hailo_driver_version=${{ steps.check_driver.outputs.new_version }}"
+          # Keep build.yml's manual-dispatch defaults aligned with the
+          # tracked driver and resolved runner so the next human-run
+          # build pre-fills the latest values. Fails loudly if the YAML
+          # structure shifts.
+          .github/scripts/sync-build-defaults.sh \
+            "hailo_driver_version=${{ steps.check_driver.outputs.new_version }}" \
+            "runner=${{ steps.resolve_runner.outputs.runner }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .hailo-driver-version .github/workflows/build.yml
@@ -200,7 +215,8 @@ jobs:
                 truenas_version: '${{ steps.truenas.outputs.truenas_version }}',
                 hailo_driver_version: '${{ steps.check_driver.outputs.new_version }}',
                 train_name: '${{ steps.train.outputs.train }}',
+                runner: '${{ steps.resolve_runner.outputs.runner }}',
                 mark_latest: 'false'
               }
             });
-            console.log('Triggered build for HailoRT ${{ steps.check_driver.outputs.new_version }}');
+            console.log('Triggered build for HailoRT ${{ steps.check_driver.outputs.new_version }} (runner: ${{ steps.resolve_runner.outputs.runner }})');

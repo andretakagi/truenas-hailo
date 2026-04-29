@@ -3,8 +3,9 @@ name: Build Hailo Sysext
 on:
   workflow_dispatch:
     # Defaults below are kept in sync with the tracked-version files
-    # (`version`, `.hailo-driver-version`, `train`) by
-    # .github/scripts/sync-build-defaults.py, which the scheduled
+    # (`version`, `.hailo-driver-version`, `train`) and the runner
+    # resolved from TrueNAS's published Debian release by
+    # .github/scripts/sync-build-defaults.sh, which the scheduled
     # auto-bump workflows invoke after writing those files. A manual
     # dispatch from the Actions UI therefore pre-fills the latest
     # tracked combination; the user can still override any field.
@@ -21,6 +22,10 @@ on:
         description: 'Train name'
         required: true
         default: 'Goldeye'
+      runner:
+        description: 'GitHub Actions runner image (must have GLIBC ≤ TrueNAS rootfs)'
+        required: true
+        default: 'ubuntu-22.04'
       mark_latest:
         description: 'Mark this release as Latest on GitHub'
         required: false
@@ -41,6 +46,10 @@ on:
       train_name:
         type: string
         required: true
+      runner:
+        type: string
+        required: false
+        default: 'ubuntu-22.04'
       mark_latest:
         type: string
         required: false
@@ -51,10 +60,13 @@ permissions:
 
 jobs:
   build:
-    # Use ubuntu-22.04 (GLIBC 2.35) so binaries are compatible with
-    # TrueNAS SCALE (Debian Bookworm, GLIBC 2.36). Ubuntu 24.04 has
-    # GLIBC 2.39 which is too new.
-    runs-on: ubuntu-22.04
+    # Runner is resolved from TrueNAS's published Debian release at the
+    # tracked version (see .github/scripts/resolve-runner.sh). The
+    # runner's GLIBC must be ≤ the rootfs's so the kernel module / shared
+    # library we build link cleanly when loaded on TrueNAS. Auto-bump
+    # workflows pass this in; the manual-dispatch default is the runner
+    # for the currently tracked TrueNAS version.
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 90
 
     steps:
