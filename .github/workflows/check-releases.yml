@@ -61,19 +61,19 @@ jobs:
             exit 1
           fi
 
+          # Stable tags are TS- followed by a purely-numeric dotted version
+          # (e.g. TS-25.10.3, TS-25.10.3.1). Any non-numeric suffix
+          # (BETA, RC, ALPHA, MASTER, ...) is a pre-release and excluded.
           LATEST_TAG=$(printf '%s' "$TAGS_JSON" | python3 -c "
-          import sys, json
+          import sys, json, re
           tags = json.load(sys.stdin)
-          stable = [
-              t['name'] for t in tags
-              if t['name'].startswith('TS-')
-              and 'BETA' not in t['name'].upper()
-              and 'RC' not in t['name'].upper()
-          ]
+          stable_re = re.compile(r'^TS-(\d+(?:\.\d+)+)$')
+          stable = [(m.group(1), t['name']) for t in tags
+                    if (m := stable_re.match(t['name']))]
           if not stable:
               sys.exit(0)
-          stable.sort(key=lambda x: [int(p) for p in x.replace('TS-','').split('.')])
-          print(stable[-1])
+          stable.sort(key=lambda v: [int(p) for p in v[0].split('.')])
+          print(stable[-1][1])
           ")
 
           if [ -z "$LATEST_TAG" ]; then
