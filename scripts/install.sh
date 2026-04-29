@@ -401,8 +401,8 @@ else
         fi
     done
     if [ -n "$SYSEXT_KVER" ]; then
-        log "ERROR: Kernel version mismatch — running $(uname -r) but sysext has module for ${SYSEXT_KVER}"
-        log "ERROR: TrueNAS was likely updated. Download a new hailo.raw release matching $(uname -r)"
+        log "ERROR: Kernel version mismatch — running ${running_kver} but sysext has module for ${SYSEXT_KVER}"
+        log "ERROR: TrueNAS was likely updated. Download a new hailo.raw release matching ${running_kver}"
         log "ERROR: Visit https://github.com/${HAILO_REPO}/releases"
     else
         log "WARNING: hailo_pci.ko not found at ${HAILO_KO}"
