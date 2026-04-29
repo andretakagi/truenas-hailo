@@ -99,7 +99,17 @@ if [ -f "$HAILO_KO" ]; then
     insmod "$HAILO_KO" || log "WARNING: insmod hailo_pci failed (device may not be present)"
 else
     # Module path doesn't match running kernel — likely a TrueNAS update changed the kernel
-    SYSEXT_KVER=$(ls /usr/lib/modules/ 2>/dev/null | grep -Fv "$(uname -r)" | head -1)
+    SYSEXT_KVER=""
+    running_kver=$(uname -r)
+    for d in /usr/lib/modules/*/; do
+        [ -d "$d" ] || continue
+        name=${d%/}
+        name=${name##*/}
+        if [ "$name" != "$running_kver" ]; then
+            SYSEXT_KVER="$name"
+            break
+        fi
+    done
     if [ -n "$SYSEXT_KVER" ]; then
         log "ERROR: Kernel version mismatch — running $(uname -r) but sysext has module for ${SYSEXT_KVER}"
         log "ERROR: TrueNAS was likely updated. Download a new hailo.raw release matching $(uname -r)"
