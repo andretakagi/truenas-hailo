@@ -282,22 +282,19 @@ This is why:
 
 ## Automated Version Monitoring
 
-### TrueNAS Releases (Monday)
+Both check workflows run daily and dispatch `build.yml` with `mark_latest='false'`, so newly built releases publish without claiming the "Latest" badge. A human promotes a release to Latest in the GitHub UI after verifying it on Hailo-8 hardware.
 
-Queries `truenas/scale-build` GitHub tags for new `TS-25.10.*` stable releases. When found:
+### TrueNAS Releases (daily, 06:15 UTC)
 
-- Updates the `version` file
-- Auto-triggers the build workflow
+Queries `truenas/scale-build` GitHub tags for new `TS-25.10.*` stable releases. When a newer tag is found, the workflow first sends a HEAD request against the matching ISO at `download.truenas.com`. If the ISO is published, it bumps `version` and dispatches the build. If not, it logs and waits for the next run — `truenas/scale-build` can be tagged hours or days before iXsystems publishes the ISO.
 
-This is critical because a new TrueNAS release may ship a different kernel, requiring a recompiled `hailo_pci.ko`.
+This rebuild matters because a new TrueNAS release may ship a different kernel, requiring a recompiled `hailo_pci.ko`.
 
-### HailoRT Releases (Wednesday)
+### HailoRT Releases (daily, 06:00 UTC)
 
-Checks `hailo-ai/hailort-drivers` GitHub tags for newer versions. Creates an issue (does not auto-build) because:
-- New driver versions should be tested before deployment
-- The kernel module interface is stable across minor versions
-- Users should opt-in to driver updates
-- the frigate image is usually pinned to a specific version so no point building versions frigate container doesn't support 
+Shallow-clones the upstream `hailo8` branch of `hailo-ai/hailort-drivers` and runs `git tag --merged origin/hailo8` to enumerate candidate tags. This is authoritative — the GitHub `/tags` API does not say which branch a tag lives on, and Hailo's `master` branch tracks the 5.x line for Hailo-10/15, which does not support Hailo-8.
+
+When a newer hailo8-reachable tag is found, the workflow bumps `.hailo-driver-version` and dispatches the build. The build publishes a release without the "Latest" badge so it can be tested before being promoted.
 
 ## Comparison with NVIDIA Sysext
 

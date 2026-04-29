@@ -29,10 +29,12 @@ Hailo-8 firmware is proprietary and this project does not redistribute it. Inste
 
 ## Automated Updates
 
-Two weekly GitHub Actions workflows monitor for updates:
+Two daily GitHub Actions workflows monitor for updates:
 
-- **Monday**: Checks for new TrueNAS SCALE releases → auto-triggers rebuild (new kernel may need recompiled module)
-- **Wednesday**: Checks for new HailoRT releases → creates GitHub issue for manual review
+- **TrueNAS check** (06:15 UTC): looks for new TrueNAS SCALE releases. When the matching ISO is live at `download.truenas.com`, it bumps `version` and triggers a rebuild (a new kernel may need a recompiled module).
+- **HailoRT check** (06:00 UTC): looks for new tags reachable from `hailort-drivers`'s `hailo8` branch. When found, it bumps `.hailo-driver-version` and triggers a build.
+
+Both auto-builds publish releases without the "Latest" badge — verify the build on Hailo-8 hardware, then promote it to Latest manually in the GitHub UI.
 
 ## Custom Builds
 
@@ -51,7 +53,7 @@ If you need a build for a TrueNAS version or HailoRT version that doesn't have a
 
 ### When to Build Custom
 
-- **New TrueNAS release** not yet covered by a pre-built release (the Monday check workflow usually catches these within a week)
+- **New TrueNAS release** not yet covered by a pre-built release (the daily check workflow usually catches these within 24 hours of the ISO going live)
 - **Different HailoRT version** — you want to test a newer or older driver version
 - **Modified build** — you've forked the repo to change build options, add patches, etc.
 
