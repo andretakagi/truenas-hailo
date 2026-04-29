@@ -440,16 +440,30 @@ except Exception:
     pass
 " 2>/dev/null)
 
+# Build the payload via python3 -> json.dumps so PREINIT_SCRIPT is escaped
+# correctly even if the path ever grows characters that are special to JSON.
+PREINIT_PAYLOAD=$(PREINIT_SCRIPT="$PREINIT_SCRIPT" python3 -c '
+import json, os
+print(json.dumps({
+    "type": "COMMAND",
+    "command": os.environ["PREINIT_SCRIPT"],
+    "when": "PREINIT",
+    "enabled": True,
+    "timeout": 30,
+    "comment": "Activate Hailo-8 sysext before apps start",
+}))
+')
+
 if [ -n "$EXISTING_ID" ]; then
     echo "Hailo init script already registered (id: ${EXISTING_ID}), updating to PREINIT..."
-    if ! midclt call initshutdownscript.update "$EXISTING_ID" "{\"type\": \"COMMAND\", \"command\": \"${PREINIT_SCRIPT}\", \"when\": \"PREINIT\", \"enabled\": true, \"timeout\": 30, \"comment\": \"Activate Hailo-8 sysext before apps start\"}"; then
+    if ! midclt call initshutdownscript.update "$EXISTING_ID" "$PREINIT_PAYLOAD"; then
         echo "ERROR: Failed to update init script (id: ${EXISTING_ID})." >&2
         echo "ERROR: Without a registered PREINIT script the sysext will NOT survive a reboot." >&2
         echo "ERROR: Check 'midclt call initshutdownscript.query' and re-run the installer." >&2
         exit 1
     fi
 else
-    if ! midclt call initshutdownscript.create "{\"type\": \"COMMAND\", \"command\": \"${PREINIT_SCRIPT}\", \"when\": \"PREINIT\", \"enabled\": true, \"timeout\": 30, \"comment\": \"Activate Hailo-8 sysext before apps start\"}"; then
+    if ! midclt call initshutdownscript.create "$PREINIT_PAYLOAD"; then
         echo "ERROR: Failed to register PREINIT script via midclt." >&2
         echo "ERROR: Without a registered PREINIT script the sysext will NOT survive a reboot." >&2
         echo "ERROR: Check that the TrueNAS middleware is reachable (midclt call core.ping) and re-run." >&2
