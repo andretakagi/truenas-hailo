@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Sync workflow_dispatch defaults in .github/workflows/build.yml with the
-# tracked-version files. Invoked by the scheduled auto-bump workflows after
-# they write `version`, `train`, `.hailo-driver-version`, or resolve a build
-# runner, so a manual dispatch from the Actions UI always pre-fills the
-# latest tracked combination.
+# tracked-versions state. Invoked by .github/workflows/check-releases.yml
+# after it writes .github/tracked-versions.json or resolves a build runner,
+# so a manual dispatch from the Actions UI always pre-fills the latest
+# tracked combination.
 #
 # Usage:
 #   sync-build-defaults.sh KEY=VALUE [KEY=VALUE ...]

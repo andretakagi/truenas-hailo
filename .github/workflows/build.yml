@@ -2,12 +2,11 @@ name: Build Hailo Sysext
 
 on:
   workflow_dispatch:
-    # Defaults below are kept in sync with the tracked-version files
-    # (`version`, `.hailo-driver-version`, `train`) and the runner
-    # resolved from TrueNAS's published Debian release by
+    # Defaults below are kept in sync with .github/tracked-versions.json
+    # and the runner resolved from TrueNAS's published Debian release by
     # .github/scripts/sync-build-defaults.sh, which the scheduled
-    # auto-bump workflows invoke after writing those files. A manual
-    # dispatch from the Actions UI therefore pre-fills the latest
+    # check-releases workflow invokes after updating the state file. A
+    # manual dispatch from the Actions UI therefore pre-fills the latest
     # tracked combination; the user can still override any field.
     inputs:
       truenas_version:

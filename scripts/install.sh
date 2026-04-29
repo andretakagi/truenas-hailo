@@ -129,19 +129,20 @@ fi
 echo ""
 echo "=== Downloading Hailo-8 firmware ==="
 
-# Determine HailoRT version from release tag or .hailo-driver-version
+# Determine HailoRT version from release tag or the repo's tracked-versions
+# state file. The release tag is the primary source (format v<truenas>-hailo<driver>);
+# the JSON fallback handles tag-format drift.
 HAILO_VERSION=""
 if [ -n "${RELEASE_TAG:-}" ]; then
-    # Extract HailoRT version from tag of the form v<truenas>-hailo<driver>.
     HAILO_VERSION=$(echo "$RELEASE_TAG" | sed -n 's/.*hailo\([0-9.]*\)$/\1/p')
 fi
 if [ -z "$HAILO_VERSION" ]; then
-    # Fallback: try to read from the repo's .hailo-driver-version
-    HAILO_VERSION=$(curl -sf "https://raw.githubusercontent.com/${REPO}/main/.hailo-driver-version" | tr -d '[:space:]') || true
+    HAILO_VERSION=$(curl -sf "https://raw.githubusercontent.com/${REPO}/main/.github/tracked-versions.json" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['hailo']['driver'])" 2>/dev/null) || true
 fi
 if [ -z "$HAILO_VERSION" ]; then
     echo "ERROR: Could not determine HailoRT version."
-    echo "  Tag parse failed and ${REPO}/.hailo-driver-version could not be fetched."
+    echo "  Tag parse failed and ${REPO}/.github/tracked-versions.json could not be fetched."
     echo "  Refusing to guess a firmware version — re-run with a release tag whose"
     echo "  format matches v<truenas>-hailo<driver>."
     exit 1
@@ -429,11 +430,19 @@ except Exception:
 
 if [ -n "$EXISTING_ID" ]; then
     echo "Hailo init script already registered (id: ${EXISTING_ID}), updating to PREINIT..."
-    midclt call initshutdownscript.update "$EXISTING_ID" "{\"type\": \"COMMAND\", \"command\": \"${PREINIT_SCRIPT}\", \"when\": \"PREINIT\", \"enabled\": true, \"timeout\": 30, \"comment\": \"Activate Hailo-8 sysext before apps start\"}" 2>/dev/null \
-        || echo "WARNING: Failed to update init script"
+    if ! midclt call initshutdownscript.update "$EXISTING_ID" "{\"type\": \"COMMAND\", \"command\": \"${PREINIT_SCRIPT}\", \"when\": \"PREINIT\", \"enabled\": true, \"timeout\": 30, \"comment\": \"Activate Hailo-8 sysext before apps start\"}"; then
+        echo "ERROR: Failed to update init script (id: ${EXISTING_ID})." >&2
+        echo "ERROR: Without a registered PREINIT script the sysext will NOT survive a reboot." >&2
+        echo "ERROR: Check 'midclt call initshutdownscript.query' and re-run the installer." >&2
+        exit 1
+    fi
 else
-    midclt call initshutdownscript.create "{\"type\": \"COMMAND\", \"command\": \"${PREINIT_SCRIPT}\", \"when\": \"PREINIT\", \"enabled\": true, \"timeout\": 30, \"comment\": \"Activate Hailo-8 sysext before apps start\"}" 2>/dev/null \
-        || echo "WARNING: Failed to register PREINIT script"
+    if ! midclt call initshutdownscript.create "{\"type\": \"COMMAND\", \"command\": \"${PREINIT_SCRIPT}\", \"when\": \"PREINIT\", \"enabled\": true, \"timeout\": 30, \"comment\": \"Activate Hailo-8 sysext before apps start\"}"; then
+        echo "ERROR: Failed to register PREINIT script via midclt." >&2
+        echo "ERROR: Without a registered PREINIT script the sysext will NOT survive a reboot." >&2
+        echo "ERROR: Check that the TrueNAS middleware is reachable (midclt call core.ping) and re-run." >&2
+        exit 1
+    fi
     echo "PREINIT script registered"
 fi
 

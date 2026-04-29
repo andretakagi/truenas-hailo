@@ -36,7 +36,7 @@ This means we can skip scale-build entirely, reducing build time from ~5-6 hours
 
 ### Build Environment
 
-The runner image is resolved per-build so it stays compatible with whatever Debian release TrueNAS is on (the runner's GLIBC must be ≤ the TrueNAS rootfs's). Today TrueNAS is on Debian Bookworm (GLIBC 2.36) and the resolver picks **ubuntu-22.04** (GLIBC 2.35); Ubuntu 24.04 (GLIBC 2.39) would produce binaries that won't run on TrueNAS.
+The runner image is resolved per-build so it stays compatible with whatever Debian release TrueNAS is on (the runner's GLIBC must be ≤ the TrueNAS rootfs's). For example, Debian Bookworm (GLIBC 2.36) maps to **ubuntu-22.04** (GLIBC 2.35); Ubuntu 24.04 (GLIBC 2.39) would produce binaries that won't run on a Bookworm-based rootfs. The current mapping table lives in [`.github/scripts/resolve-runner.sh`](../.github/scripts/resolve-runner.sh).
 
 The kernel module is compiled with **gcc-12** because the TrueNAS kernel was built with GCC 12, which uses `-ftrivial-auto-var-init=zero` — a flag not supported by GCC 11 (ubuntu-22.04's default). The userspace components (hailortcli, libhailort) are built with the default GCC 11, which is fine for GLIBC compatibility.
 
@@ -292,19 +292,21 @@ This is why:
 
 ## Automated Version Monitoring
 
-Both check workflows run daily and dispatch `build.yml` with `mark_latest='false'`, so newly built releases publish without claiming the "Latest" badge. A human promotes a release to Latest in the GitHub UI after verifying it on Hailo-8 hardware.
+A single daily workflow (`check-releases.yml`, 06:00 UTC) watches both upstreams and dispatches `build.yml` with `mark_latest='false'`, so newly built releases publish without claiming the "Latest" badge. A human promotes a release to Latest in the GitHub UI after verifying it on Hailo-8 hardware. The state lives in `.github/tracked-versions.json` and the workflow uses a `concurrency: { group: check-releases }` block to serialize manual dispatches against the scheduled run.
 
-### TrueNAS Releases (daily, 06:15 UTC)
+### TrueNAS half
 
 Queries `truenas/scale-build` GitHub tags and picks the highest stable `TS-*` tag (skipping BETA/RC). The train name (`Goldeye`, future `Halibut`, etc.) is resolved live from `download.truenas.com`'s directory listing, so a train rollover happens automatically without anyone hardcoding a major.minor filter. Before bumping, the workflow sends a HEAD request against the matching ISO — `truenas/scale-build` can be tagged hours or days before iXsystems publishes the ISO, so a tag without a published ISO just defers the bump to the next run.
 
-This rebuild matters because a new TrueNAS release may ship a different kernel, requiring a recompiled `hailo_pci.ko`.
+A bump matters here because a new TrueNAS release may ship a different kernel, requiring a recompiled `hailo_pci.ko`.
 
-### HailoRT Releases (daily, 06:00 UTC)
+### HailoRT half
 
-Shallow-clones the upstream `hailo8` branch of `hailo-ai/hailort-drivers` and runs `git tag --merged origin/hailo8` to enumerate candidate tags. This is authoritative — the GitHub `/tags` API does not say which branch a tag lives on, and Hailo's `master` branch tracks the 5.x line for Hailo-10/15, which does not support Hailo-8.
+Shallow-clones the upstream `hailo8` branch of `hailo-ai/hailort-drivers` and runs `git tag --merged origin/hailo8` to enumerate candidate tags. This is authoritative — the GitHub `/tags` API does not say which branch a tag lives on, and Hailo's `master` branch tracks the 5.x line for Hailo-10/15, which does not support Hailo-8. The candidate is then capped at the version pinned in Frigate's `docker/main/install_hailort.sh` on the `dev` branch (HailoRT enforces exact-match between kernel module and userspace library — Frigate is the consumer the sysext exists to serve).
 
-When a newer hailo8-reachable tag is found, the workflow bumps `.hailo-driver-version` and dispatches the build. The build publishes a release without the "Latest" badge so it can be tested before being promoted.
+### One commit, one dispatch
+
+If either half (or both) yields a bump, the workflow writes the new state file in one commit, syncs `build.yml`'s `workflow_dispatch` defaults via `sync-build-defaults.sh`, pushes, and dispatches `build.yml` once. When both upstreams move on the same day, that's still a single consolidated build instead of two back-to-back.
 
 ## Comparison with NVIDIA Sysext
 

@@ -1,0 +1,9 @@
+{
+  "truenas": {
+    "version": "25.10.3",
+    "train": "Goldeye"
+  },
+  "hailo": {
+    "driver": "4.21.0"
+  }
+}
