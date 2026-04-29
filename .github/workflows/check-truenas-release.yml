@@ -53,9 +53,21 @@ jobs:
           echo "Current tracked version: ${CURRENT_VERSION}"
 
           if [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "$CURRENT_VERSION" ]; then
-            echo "New release detected!"
-            echo "new_release=true" >> "$GITHUB_OUTPUT"
-            echo "new_version=${LATEST_VERSION}" >> "$GITHUB_OUTPUT"
+            # Confirm the ISO is actually published. The truenas/scale-build
+            # repo can be tagged before iXsystems publishes the matching ISO
+            # at download.truenas.com — bumping in that window guarantees the
+            # follow-on build will 404, so wait until the ISO appears.
+            TRAIN_NAME=$(cat train | tr -d '[:space:]')
+            ISO_URL="https://download.truenas.com/TrueNAS-SCALE-${TRAIN_NAME}/${LATEST_VERSION}/TrueNAS-SCALE-${LATEST_VERSION}.iso"
+            if curl -fsI "$ISO_URL" >/dev/null 2>&1; then
+              echo "New release detected and ISO is published!"
+              echo "new_release=true" >> "$GITHUB_OUTPUT"
+              echo "new_version=${LATEST_VERSION}" >> "$GITHUB_OUTPUT"
+            else
+              echo "Tag ${LATEST_VERSION} found, but ISO not yet published at ${ISO_URL}"
+              echo "Will retry on next scheduled run."
+              echo "new_release=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "No new release"
             echo "new_release=false" >> "$GITHUB_OUTPUT"
