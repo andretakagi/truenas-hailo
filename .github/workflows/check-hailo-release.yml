@@ -23,48 +23,25 @@ jobs:
           KNOWN_VERSION=$(cat .hailo-driver-version | tr -d '[:space:]')
           echo "Current tracked version: ${KNOWN_VERSION}"
 
-          # Query GitHub releases for hailort-drivers
-          # We check the hailo8 branch tags
-          RELEASES_JSON=$(curl -sf "https://api.github.com/repos/hailo-ai/hailort-drivers/tags?per_page=100" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}")
+          # Hailo-8 support lives on hailort-drivers' `hailo8` branch (4.x line).
+          # `master` tracks 5.x for Hailo-10/15 and does not support Hailo-8.
+          # The GitHub /tags API enumerates tags repo-wide and cannot tell us
+          # which branch a tag is reachable from, so we shallow-clone the
+          # `hailo8` branch and ask git directly.
+          git clone --quiet --filter=blob:none --no-checkout --branch hailo8 \
+            https://github.com/hailo-ai/hailort-drivers.git "${RUNNER_TEMP}/hailort-drivers"
 
-          LATEST=$(echo "$RELEASES_JSON" | python3 -c "
-          import sys, json, re
-
-          # Hailo-8 support lives on hailort-drivers' \`hailo8\` branch (4.x line).
-          # The \`master\` branch tracks 5.x for Hailo-10/15 and does NOT support
-          # Hailo-8, so we must only consider tags whose major matches the
-          # currently-tracked version. Otherwise this workflow would surface
-          # 5.x releases that, if built, would silently produce a driver that
-          # does not work with Hailo-8.
-          known_major = '${KNOWN_VERSION}'.split('.')[0]
-
-          tags = json.load(sys.stdin)
-          versions = []
-          for t in tags:
-              m = re.match(r'^v?(\d+)\.(\d+)\.(\d+)$', t['name'])
-              if m and m.group(1) == known_major:
-                  versions.append('.'.join(m.groups()))
-
-          if not versions:
-              print('')
-              sys.exit()
-
-          # Sort semantically
-          versions.sort(key=lambda v: [int(x) for x in v.split('.')])
-          print(versions[-1])
-          ")
+          LATEST=$(git -C "${RUNNER_TEMP}/hailort-drivers" tag --merged origin/hailo8 \
+            | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sed 's/^v//' \
+            | sort -V \
+            | tail -n1)
 
           echo "Latest available version: ${LATEST}"
 
           if [ -n "$LATEST" ] && [ "$LATEST" != "$KNOWN_VERSION" ]; then
-            # Compare versions numerically
-            NEWER=$(python3 -c "
-          known = [int(x) for x in '${KNOWN_VERSION}'.split('.')]
-          latest = [int(x) for x in '${LATEST}'.split('.')]
-          print('true' if latest > known else 'false')
-          ")
-            if [ "$NEWER" = "true" ]; then
+            HIGHER=$(printf '%s\n%s\n' "$KNOWN_VERSION" "$LATEST" | sort -V | tail -n1)
+            if [ "$HIGHER" = "$LATEST" ]; then
               echo "Newer version found: ${LATEST}"
               echo "new_driver=true" >> "$GITHUB_OUTPUT"
               echo "new_version=${LATEST}" >> "$GITHUB_OUTPUT"
@@ -106,13 +83,10 @@ jobs:
               title: `New HailoRT driver available: ${newVersion}`,
               body: `A newer HailoRT driver has been detected: **${newVersion}**\n\n` +
                 `Source: https://github.com/hailo-ai/hailort-drivers/releases/tag/v${newVersion}\n\n` +
-                `> **Hailo-8 caveat:** This check only surfaces tags whose major matches ` +
-                `the currently-tracked version, since Hailo-8 support lives on the ` +
-                `\`hailo8\` branch of hailort-drivers (4.x line). Before building, confirm ` +
-                `the tag is actually reachable from the \`hailo8\` branch — the tags API ` +
-                `does not distinguish branches.\n\n` +
+                `This tag has been verified to be reachable from the \`hailo8\` branch ` +
+                `(the 4.x line that supports Hailo-8).\n\n` +
                 `To build with this driver, manually trigger the **Build Hailo Sysext** workflow with:\n` +
                 `- \`hailo_driver_version\`: \`${newVersion}\`\n\n` +
-                `After verifying the build, update \`.hailo-driver-version\` to track this as the new default.`,
+                `After verifying the build on real Hailo-8 hardware, update \`.hailo-driver-version\` to track this as the new default.`,
               labels: ['hailo-driver-update']
             });
