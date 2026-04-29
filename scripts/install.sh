@@ -83,7 +83,9 @@ import sys, json
 try:
     releases = json.load(sys.stdin)
     version = '${VERSION}'
-    matches = [r for r in releases if version in r['tag_name']]
+    # Anchor the match: v<version>-* prevents 25.10.3 from matching 25.10.3.1.
+    prefix = f'v{version}-'
+    matches = [r for r in releases if r.get('tag_name', '').startswith(prefix)]
     if not matches:
         print('', end='')
     else:
