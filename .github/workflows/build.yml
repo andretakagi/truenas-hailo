@@ -222,17 +222,24 @@ jobs:
           # The header directory name (e.g. truenas-production-amd64) may differ
           # from the actual kernel release string (e.g. 6.12.33-production+truenas).
           REAL_KVER=""
-          # Method 1: kernel.release in headers
-          if [ -f "/tmp/rootfs/usr/src/linux-headers-${KVER}/include/config/kernel.release" ]; then
-            REAL_KVER=$(cat "/tmp/rootfs/usr/src/linux-headers-${KVER}/include/config/kernel.release" | tr -d '[:space:]')
+          # Method 1: kernel.release in headers (authoritative — this is what
+          # the build system records as the kernel release string).
+          KREL_FILE="/tmp/rootfs/usr/src/linux-headers-${KVER}/include/config/kernel.release"
+          if [ -f "$KREL_FILE" ]; then
+            REAL_KVER=$(tr -d '[:space:]' < "$KREL_FILE")
           fi
-          # Method 2: /lib/modules directory name
+          # Method 2: /lib/modules directory name (fallback when headers are
+          # split across packages and kernel.release isn't co-located).
           if [ -z "$REAL_KVER" ]; then
             REAL_KVER=$(ls /tmp/rootfs/lib/modules/ 2>/dev/null | grep -v '^\.' | head -1)
           fi
-          # Method 3: fall back to header dir name
+          # No fallback to $KVER: the header *package* name (e.g.
+          # truenas-production-amd64) is not a kernel release string, and
+          # using it puts modules at the wrong /lib/modules/<kver>/ path.
+          # Better to fail the build than ship a sysext that won't load.
           if [ -z "$REAL_KVER" ]; then
-            REAL_KVER="$KVER"
+            echo "::error title=kernel-version::could not resolve real kernel version. Method 1 (${KREL_FILE}) and Method 2 (/tmp/rootfs/lib/modules/) both returned empty. The TrueNAS rootfs layout may have changed; investigate before bumping the runner or KVER detection." >&2
+            exit 1
           fi
           echo "Real kernel version: ${REAL_KVER}"
 
