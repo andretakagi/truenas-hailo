@@ -34,6 +34,30 @@ sudo bash install.sh --repo=andretakagi/truenas-hailo /tmp/hailo.raw
 | `--dry-run` | Validate everything (downloads, checksums, firmware availability, squashfs repack) without modifying the system. Exits 0 if everything would have succeeded. |
 | `--help` | Show usage help |
 
+## Probing and Validating
+
+Two read-only modes are available for diagnostics and pre-flight checks. They are mutually exclusive — passing both exits 2 with a usage error.
+
+### `--check` — probe an existing install
+
+Reports the state of nine things on a system that already has Hailo installed: the `/dev/hailo0` device node, the `hailo_pci` kernel module, the sysext file and merge state, the persistent config directory, the backup `hailo.raw`, the PREINIT script on disk, the PREINIT registration with TrueNAS middleware, and whether the kernel module path matches the running kernel. Each failed check prints a one-line `→` hint pointing at the next step.
+
+Exits 0 if everything is healthy (warnings allowed), 1 if any check fails. Useful for confirming an install is sound and for gathering state to attach to a support report.
+
+```bash
+sudo bash install.sh --check
+```
+
+### `--dry-run` — validate without modifying the system
+
+Performs every read-only and network step (release lookup, `hailo.raw` + firmware download, SHA256 verification, squashfs unpack/repack into `/tmp`) but skips every command that would mutate the running system. Each skipped mutation is logged as `[dry-run] would: <command>` so you can see exactly what an install would do, and the run ends with a summary of the target paths and resolved versions.
+
+Useful for verifying that a release works end-to-end (network reachable, checksum matches, firmware available, squashfs tooling present) before committing to the install on a production system. Note that dry-run still requires running on TrueNAS itself — it calls `midclt` for version detection, which is not available on a generic Linux host.
+
+```bash
+sudo bash install.sh --dry-run
+```
+
 ## What the Install Script Does
 
 1. **Downloads `hailo.raw`** from the GitHub release matching your TrueNAS version (or uses a local file)
