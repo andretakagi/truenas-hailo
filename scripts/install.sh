@@ -164,6 +164,34 @@ do_check() {
             "see docs/troubleshooting.md (kernel-mismatch recovery)"
     fi
 
+    # 10. PREINIT script result on last boot.
+    # hailo-preinit.sh logs via `logger -t hailo-preinit`, so journalctl can
+    # filter by tag. The script ends with a "Done" sentinel on success; any
+    # ERROR: line in the same boot indicates a failure path was hit.
+    if ! command -v journalctl >/dev/null 2>&1; then
+        record_fail "journalctl not available — cannot read PREINIT result" \
+            "this script must run on TrueNAS SCALE"
+    else
+        local preinit_log preinit_last
+        preinit_log=$(journalctl -b -t hailo-preinit --no-pager -o cat 2>/dev/null || true)
+        if [ -z "$preinit_log" ]; then
+            record_warn "No hailo-preinit entries this boot" \
+                "PREINIT may not be registered yet — reboot after install, or re-run install.sh"
+        elif printf '%s' "$preinit_log" | grep -q '^ERROR:'; then
+            preinit_last=$(printf '%s' "$preinit_log" | grep '^ERROR:' | tail -1)
+            record_fail "PREINIT logged an error this boot: ${preinit_last}" \
+                "see docs/troubleshooting.md and full log: journalctl -b -t hailo-preinit"
+        else
+            preinit_last=$(printf '%s' "$preinit_log" | tail -1)
+            if [ "$preinit_last" = "Done" ]; then
+                record_pass "PREINIT completed successfully this boot"
+            else
+                record_warn "PREINIT ran but did not log the Done sentinel (last: ${preinit_last})" \
+                    "review full log: journalctl -b -t hailo-preinit"
+            fi
+        fi
+    fi
+
     printf '%s\n' "${status_lines[@]}"
     echo ""
     if [ "${#hint_lines[@]}" -gt 0 ]; then
