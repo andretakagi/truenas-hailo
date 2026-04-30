@@ -27,7 +27,7 @@ sudo bash install.sh --repo=andretakagi/truenas-hailo /tmp/hailo.raw
 
 | Option | Description |
 | --- | --- |
-| `--repo=OWNER/NAME` | GitHub repo to download release from (default: `andretakagi/truenas-hailo`). Can also be set via `HAILO_REPO` env var. |
+| `--repo=OWNER/NAME` | GitHub repo to download release from (default: `scyto/truenas-hailo`). Pass `--repo=andretakagi/truenas-hailo` or set `HAILO_REPO` to install from this fork. |
 | `--pool=NAME` | ZFS pool for persistent config (e.g., `fast`) |
 | `--persist-path=PATH` | Exact path for persistent config directory |
 | `--check` | Probe an existing install (read-only) and report status. Exits 0 if all checks pass, 1 otherwise. |
@@ -114,11 +114,24 @@ Use this if you're decommissioning the Hailo-8, switching forks, or recovering f
 
 ## Scripts Reference
 
+### Run-time (shipped in releases)
+
 | Script | Purpose |
 | --- | --- |
 | `scripts/install.sh` | Downloads release, fetches firmware, injects into sysext, installs, sets up persistence |
 | `scripts/restore.sh` | Uninstalls sysext, deregisters init script, cleans up persistent storage |
-| `scripts/hailo-preinit.sh` | Boot-time script — activates sysext before apps start (also embedded in install.sh) |
+| `scripts/hailo-preinit.sh` | Boot-time script — activates sysext before apps start. Also embedded as a heredoc in `install.sh`; the lint workflow's `check-preinit-sync.sh` fails the build if the two copies drift. |
+
+### Build / CI (run on GitHub Actions, not shipped)
+
+| Script | Purpose |
+| --- | --- |
+| `.github/scripts/check-preinit-sync.sh` | Lint gate — verifies the `install.sh` heredoc copy of `hailo-preinit.sh` is byte-identical to the standalone file |
+| `.github/scripts/validate-tracked-versions.sh` | Lint gate — verifies `.github/tracked-versions.json` has the shape the auto-bump workflow assumes |
+| `.github/scripts/resolve-runner.sh` | Looks up TrueNAS's Debian release from build metadata and picks the matching Ubuntu runner for `build.yml` |
+| `.github/scripts/sync-build-defaults.sh` | Auto-bump helper — rewrites `build.yml`'s `workflow_dispatch` defaults to match the latest tracked combination |
+
+See [docs/build.md](build.md) and [docs/architecture.md](architecture.md) for how these fit into the build / version-tracking pipeline.
 
 
 ## Troubleshooting

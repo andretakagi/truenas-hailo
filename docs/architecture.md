@@ -239,6 +239,7 @@ Config stored on a ZFS data pool (survives OS updates):
 /mnt/<pool>/.config/hailo/
 ├── hailo.raw                ← Backup of the sysext (includes firmware)
 ├── .hailo-driver-version    ← HailoRT version (informational)
+├── .hailo-repo              ← Source GitHub repo (used by hailo-preinit.sh for error messages)
 └── hailo-preinit.sh         ← The PREINIT script itself
 ```
 
@@ -265,11 +266,7 @@ The script is idempotent — on a normal reboot where checksums match, it skips 
 
 ### Pool Selection
 
-The install script selects a persistent storage pool in this order:
-
-1. `--persist-path=PATH` — exact path (highest priority)
-2. `--pool=NAME` — specific pool name → `/mnt/<NAME>/.config/hailo`
-3. **Auto-detect** — first ZFS pool that isn't `boot-pool` → `/mnt/<pool>/.config/hailo`
+See [install.md § Pool Selection](install.md#pool-selection) for the resolution order. The PREINIT script finds the config at boot by scanning `/mnt/*/.config/hailo/`, so the pool name doesn't need to be persisted anywhere.
 
 ## Read-Only Filesystem Constraints
 
