@@ -43,6 +43,7 @@ if not isinstance(data, dict):
 ver_re = re.compile(r"^\d+(\.\d+){1,4}$")
 # Hailo uses strict semver: X.Y.Z only (no 4-part variants).
 hailo_ver_re = re.compile(r"^\d+\.\d+\.\d+$")
+sha256_re = re.compile(r"^[0-9a-f]{64}$")
 
 truenas = data.get("truenas")
 if not isinstance(truenas, dict):
@@ -64,5 +65,9 @@ h_driver = hailo.get("driver")
 if not isinstance(h_driver, str) or not hailo_ver_re.match(h_driver):
     fail(f"'hailo.driver' missing or malformed (got {h_driver!r}); expected X.Y.Z")
 
-print(f"tracked-versions OK: TrueNAS {tn_version} ({tn_train}), HailoRT {h_driver}")
+h_fw_sha = hailo.get("firmware_sha256")
+if not isinstance(h_fw_sha, str) or not sha256_re.match(h_fw_sha):
+    fail(f"'hailo.firmware_sha256' missing or malformed (got {h_fw_sha!r}); expected lowercase 64-char hex sha256")
+
+print(f"tracked-versions OK: TrueNAS {tn_version} ({tn_train}), HailoRT {h_driver} (fw {h_fw_sha[:8]}…)")
 PY
