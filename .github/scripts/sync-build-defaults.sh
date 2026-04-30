@@ -62,8 +62,14 @@ sync_one() {
     return 1
   fi
 
-  if ! grep -qE "^        default: '${value}'\$" "$BUILD_YML"; then
-    echo "::error title=sync-build-defaults::expected '${key}' default to be '${value}' after sync, but it is not" >&2
+  # Tightened value check: require the default to appear *immediately
+  # below* the workflow_dispatch description block (which only exists in
+  # workflow_dispatch). The previous file-wide grep could be satisfied by
+  # workflow_call's identical default, masking a silent sed no-op caused
+  # by a workflow_dispatch restructure (e.g. someone adding `type:`).
+  # `grep -Pz` treats input as null-separated, enabling multi-line patterns.
+  if ! grep -qPz "      ${key}:\n        description: [^\n]*\n        required: true\n        default: '${value}'\n" "$BUILD_YML"; then
+    echo "::error title=sync-build-defaults::expected '${key}' default to be '${value}' inside workflow_dispatch after sync, but it is not" >&2
     return 1
   fi
 
