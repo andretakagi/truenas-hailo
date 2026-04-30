@@ -178,7 +178,7 @@ do_check() {
             record_warn "No hailo-preinit entries this boot" \
                 "PREINIT may not be registered yet — reboot after install, or re-run install.sh"
         elif printf '%s' "$preinit_log" | grep -q '^ERROR:'; then
-            preinit_last=$(printf '%s' "$preinit_log" | grep '^ERROR:' | tail -1)
+            preinit_last=$(printf '%s' "$preinit_log" | grep '^ERROR:' | head -1)
             record_fail "PREINIT logged an error this boot: ${preinit_last}" \
                 "see docs/troubleshooting.md and full log: journalctl -b -t hailo-preinit"
         else
