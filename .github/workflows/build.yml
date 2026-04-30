@@ -202,9 +202,11 @@ jobs:
           # including debug" — if both selectors miss, the rootfs layout
           # has changed and we want loud failure rather than building
           # against headers we can't identify.
+          # shellcheck disable=SC2010 # ls|grep is fine: TrueNAS rootfs filenames are package-controlled (no spaces/newlines)
           KVER=$(ls /tmp/rootfs/usr/src/ 2>/dev/null | grep 'linux-headers-' | sed 's/linux-headers-//' | grep -i 'production' | head -1)
           if [ -z "$KVER" ]; then
             # Fall back to any non-debug headers
+            # shellcheck disable=SC2010
             KVER=$(ls /tmp/rootfs/usr/src/ 2>/dev/null | grep 'linux-headers-' | sed 's/linux-headers-//' | grep -vi 'debug' | head -1)
           fi
 
@@ -232,8 +234,17 @@ jobs:
           fi
           # Method 2: /lib/modules directory name (fallback when headers are
           # split across packages and kernel.release isn't co-located).
+          # Mirror the production-preferred / non-debug selector used for
+          # KVER above: a rootfs that ships both kernels would otherwise
+          # let `head -1` pick `*-debug+truenas` (sorts before production)
+          # and we'd ship a sysext under the wrong /lib/modules/<kver>/.
           if [ -z "$REAL_KVER" ]; then
-            REAL_KVER=$(ls /tmp/rootfs/lib/modules/ 2>/dev/null | grep -v '^\.' | head -1)
+            # shellcheck disable=SC2010
+            REAL_KVER=$(ls /tmp/rootfs/lib/modules/ 2>/dev/null | grep -v '^\.' | grep -i 'production' | head -1)
+          fi
+          if [ -z "$REAL_KVER" ]; then
+            # shellcheck disable=SC2010
+            REAL_KVER=$(ls /tmp/rootfs/lib/modules/ 2>/dev/null | grep -v '^\.' | grep -vi 'debug' | head -1)
           fi
           # No fallback to $KVER: the header *package* name (e.g.
           # truenas-production-amd64) is not a kernel release string, and
@@ -272,8 +283,10 @@ jobs:
           # fall back to non-debug, then fail loud rather than picking up
           # debug headers (whose package name leaks into the module path
           # and would ship a sysext we can't identify).
+          # shellcheck disable=SC2010 # ls|grep is fine: TrueNAS package-controlled filenames
           KVER=$(ls /tmp/kernel-headers/ | grep 'linux-headers-' | sed 's/linux-headers-//' | grep -i 'production' | head -1)
           if [ -z "$KVER" ]; then
+            # shellcheck disable=SC2010
             KVER=$(ls /tmp/kernel-headers/ | grep 'linux-headers-' | sed 's/linux-headers-//' | grep -vi 'debug' | head -1)
           fi
           if [ -z "$KVER" ]; then
@@ -353,7 +366,7 @@ jobs:
           cmake -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_INSTALL_PREFIX=/usr \
                 ..
-          make -j$(nproc)
+          make -j"$(nproc)"
           echo "=== Built artifacts ==="
           find . -name "libhailort*" -o -name "hailortcli" | head -20
 
@@ -386,44 +399,58 @@ jobs:
           mkdir -p "${SYSEXT_ROOT}/usr/lib/x86_64-linux-gnu"
           # Find the actual ELF shared library (not a linker script)
           LIBHAILORT=""
+          # shellcheck disable=SC2044 # for-in-find is fine: cmake build paths under /tmp/hailort/build have no spaces
           for candidate in $(find /tmp/hailort/build -name "libhailort.so*" -not -type l); do
             if file "$candidate" | grep -q "ELF"; then
               LIBHAILORT="$candidate"
               break
             fi
           done
-          if [ -n "$LIBHAILORT" ]; then
-            cp "$LIBHAILORT" "${SYSEXT_ROOT}/usr/lib/x86_64-linux-gnu/"
-            LIBNAME=$(basename "$LIBHAILORT")
-            # Create soname symlinks
-            cd "${SYSEXT_ROOT}/usr/lib/x86_64-linux-gnu"
-            if [[ "$LIBNAME" =~ libhailort\.so\..* ]]; then
-              SONAME=$(echo "$LIBNAME" | sed 's/\(libhailort\.so\.[0-9]*\).*/\1/')
-              [ "$SONAME" != "$LIBNAME" ] && ln -sf "$LIBNAME" "$SONAME"
-              ln -sf "$LIBNAME" libhailort.so
-            fi
-            cd -
+          if [ -z "$LIBHAILORT" ]; then
+            # No silent ship: a sysext without libhailort.so is a broken
+            # release — every userspace caller (Frigate, hailortcli) fails
+            # at runtime. Surface the build's actual output so the next
+            # investigator can see what cmake produced.
+            echo "::error title=libhailort::no ELF libhailort.so found under /tmp/hailort/build" >&2
+            echo "Candidates considered:" >&2
+            find /tmp/hailort/build -name "libhailort.so*" -exec file {} \; >&2 || true
+            exit 1
           fi
+          cp "$LIBHAILORT" "${SYSEXT_ROOT}/usr/lib/x86_64-linux-gnu/"
+          LIBNAME=$(basename "$LIBHAILORT")
+          # Create soname symlinks
+          cd "${SYSEXT_ROOT}/usr/lib/x86_64-linux-gnu"
+          if [[ "$LIBNAME" =~ libhailort\.so\..* ]]; then
+            SONAME=$(echo "$LIBNAME" | sed 's/\(libhailort\.so\.[0-9]*\).*/\1/')
+            [ "$SONAME" != "$LIBNAME" ] && ln -sf "$LIBNAME" "$SONAME"
+            ln -sf "$LIBNAME" libhailort.so
+          fi
+          cd -
 
           # --- HailoRT CLI ---
           # CMake generates a shell wrapper script alongside the real binary.
           # We must find the actual ELF binary, not the wrapper.
           mkdir -p "${SYSEXT_ROOT}/usr/bin"
           HAILORT_CLI=""
+          # shellcheck disable=SC2044
           for candidate in $(find /tmp/hailort/build -name "hailortcli" -type f); do
             if file "$candidate" | grep -q "ELF"; then
               HAILORT_CLI="$candidate"
               break
             fi
           done
-          if [ -n "$HAILORT_CLI" ]; then
-            echo "Found hailortcli ELF binary: $HAILORT_CLI"
-            cp "$HAILORT_CLI" "${SYSEXT_ROOT}/usr/bin/hailortcli"
-            chmod +x "${SYSEXT_ROOT}/usr/bin/hailortcli"
-          else
-            echo "WARNING: No ELF hailortcli binary found, listing candidates:"
-            find /tmp/hailort/build -name "hailortcli" -type f -exec file {} \;
+          if [ -z "$HAILORT_CLI" ]; then
+            # The release notes advertise hailortcli; missing it = silent
+            # regression. Match the libhailort failure mode rather than
+            # warn-and-continue.
+            echo "::error title=hailortcli::no ELF hailortcli binary found under /tmp/hailort/build" >&2
+            echo "Candidates considered:" >&2
+            find /tmp/hailort/build -name "hailortcli" -type f -exec file {} \; >&2 || true
+            exit 1
           fi
+          echo "Found hailortcli ELF binary: $HAILORT_CLI"
+          cp "$HAILORT_CLI" "${SYSEXT_ROOT}/usr/bin/hailortcli"
+          chmod +x "${SYSEXT_ROOT}/usr/bin/hailortcli"
 
           # --- systemd service ---
           mkdir -p "${SYSEXT_ROOT}/usr/lib/systemd/system/multi-user.target.wants"
