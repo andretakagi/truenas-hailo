@@ -17,6 +17,21 @@ log() {
     logger -t hailo-preinit "$*" 2>/dev/null || true
 }
 
+# USR_WAS_WRITABLE: 1 while we have ${USR_DATASET}'s readonly=off and
+# haven't restored it yet. Mirrors install.sh / restore.sh: a SIGINT/SIGTERM
+# (or unexpected error path) between off and on must not leave /usr writable
+# until reboot.
+USR_WAS_WRITABLE=0
+USR_DATASET=""
+
+restore_usr_readonly() {
+    if [ "$USR_WAS_WRITABLE" = "1" ] && [ -n "$USR_DATASET" ]; then
+        zfs set readonly=on "$USR_DATASET" 2>/dev/null || true
+        USR_WAS_WRITABLE=0
+    fi
+}
+trap restore_usr_readonly EXIT INT TERM
+
 # --- Find persistent config via glob ---
 PERSIST_DIR=""
 for d in /mnt/*/.config/hailo; do
@@ -45,11 +60,19 @@ if [ ! -f "$HAILO_RAW_BACKUP" ]; then
 fi
 
 # --- Compare checksums and reinstall if needed ---
+# Empty hashes mean sha256sum couldn't read one of the files (rare: ZFS
+# read error, pool flapping at PREINIT, /usr overlay weirdness). Treating
+# two empty strings as equal would log "matches backup, skipping copy" and
+# silently leave a possibly-broken installed sysext active. Require both
+# hashes to be non-empty before declaring a match; otherwise reinstall
+# defensively from the backup.
 NEED_COPY=true
 if [ -f "$SYSEXT_TARGET" ]; then
     INSTALLED_SUM=$(sha256sum "$SYSEXT_TARGET" | awk '{print $1}')
     BACKUP_SUM=$(sha256sum "$HAILO_RAW_BACKUP" | awk '{print $1}')
-    if [ "$INSTALLED_SUM" = "$BACKUP_SUM" ]; then
+    if [ -z "$INSTALLED_SUM" ] || [ -z "$BACKUP_SUM" ]; then
+        log "WARNING: failed to read sha256 (installed='${INSTALLED_SUM}', backup='${BACKUP_SUM}'); reinstalling defensively"
+    elif [ "$INSTALLED_SUM" = "$BACKUP_SUM" ]; then
         log "hailo.raw already matches backup, skipping copy"
         NEED_COPY=false
     else
@@ -68,17 +91,20 @@ if [ "$NEED_COPY" = true ]; then
     USR_DATASET=$(zfs list -H -o name /usr 2>/dev/null)
     if [ -n "$USR_DATASET" ]; then
         zfs set readonly=off "$USR_DATASET"
+        USR_WAS_WRITABLE=1
     fi
 
     log "Copying hailo.raw from backup..."
     if ! cp "$HAILO_RAW_BACKUP" "$SYSEXT_TARGET"; then
         log "ERROR: Failed to copy hailo.raw from backup"
-        [ -n "$USR_DATASET" ] && zfs set readonly=on "$USR_DATASET" 2>/dev/null || true
+        # Trap will re-assert readonly=on; leave the cleanup to it so the
+        # path is identical whether we error out here or get signalled.
         exit 1
     fi
 
     if [ -n "$USR_DATASET" ]; then
         zfs set readonly=on "$USR_DATASET"
+        USR_WAS_WRITABLE=0
     fi
 fi
 
