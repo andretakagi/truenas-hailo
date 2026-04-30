@@ -585,40 +585,74 @@ jobs:
             hailo.raw
             hailo.raw.sha256
 
+      - name: Render release notes
+        env:
+          TRUENAS_VERSION: ${{ inputs.truenas_version }}
+          TRAIN_NAME: ${{ inputs.train_name }}
+          HAILO_DRIVER: ${{ inputs.hailo_driver_version }}
+          RUNNER_IMAGE: ${{ inputs.runner }}
+          BUILD_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          # The body is regenerated on every dispatch — no template file checked
+          # in. REAL_KVER comes from the kernel-detection step (exported via
+          # GITHUB_ENV); the rest are workflow inputs / runtime metadata. The
+          # body links to the Frigate install_hailort.sh at the matching tag so
+          # the human gating "Set as latest" can confirm the build matches what
+          # Frigate is actually shipping.
+          cat > release-notes.md <<EOF
+          ## Hailo-8 Sysext for TrueNAS SCALE ${TRUENAS_VERSION} (${TRAIN_NAME})
+
+          | Field | Value |
+          | --- | --- |
+          | HailoRT driver | \`${HAILO_DRIVER}\` |
+          | Target kernel | \`${REAL_KVER}\` |
+          | Built on | \`${RUNNER_IMAGE}\` |
+          | Source commit | [\`${BUILD_SHA}\`](https://github.com/${REPO}/commit/${BUILD_SHA}) |
+          | Frigate compatibility | [install_hailort.sh @ v${HAILO_DRIVER}](https://github.com/blakeblackshear/frigate/blob/dev/docker/main/install_hailort.sh) (pinned: \`${HAILO_DRIVER}\`) |
+
+          **Target Device:** Hailo-8 AI Accelerator (PCIe). For Hailo-10/15, see [README](https://github.com/${REPO}#compatibility).
+
+          ### Included Components
+          - \`hailo_pci.ko\` — PCIe kernel module (built against kernel \`${REAL_KVER}\`)
+          - \`libhailort.so\` — HailoRT runtime library
+          - \`hailortcli\` — HailoRT command-line tool
+          - \`hailo-load.service\` — Systemd unit that loads the module on boot
+          - \`hailo-preinit.sh\` — TrueNAS PREINIT script bundled inside the sysext
+          - \`51-hailo-udev.rules\` — Udev rules for \`/dev/hailo*\` permissions
+
+          > **Note:** Hailo-8 firmware (\`hailo8_fw.bin\`) is proprietary and downloaded
+          > directly from Hailo's servers during installation. Not included in this release.
+
+          ### Install
+          \`\`\`bash
+          curl -fsSL https://github.com/${REPO}/releases/download/v${TRUENAS_VERSION}-hailo${HAILO_DRIVER}/install.sh | sudo bash
+          \`\`\`
+
+          ### Verify
+          \`\`\`bash
+          sudo ./install.sh --check
+          sudo hailortcli fw-control identify
+          \`\`\`
+
+          ### Uninstall
+          \`\`\`bash
+          curl -fsSL https://github.com/${REPO}/releases/download/v${TRUENAS_VERSION}-hailo${HAILO_DRIVER}/uninstall.sh | sudo bash
+          \`\`\`
+
+          ### Checksums
+          See \`hailo.raw.sha256\`.
+          EOF
+
+          echo "=== Rendered release notes ==="
+          cat release-notes.md
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.truenas_version }}-hailo${{ inputs.hailo_driver_version }}
           name: "TrueNAS ${{ inputs.truenas_version }} - Hailo ${{ inputs.hailo_driver_version }}"
-          body: |
-            ## Hailo-8 Sysext for TrueNAS SCALE ${{ inputs.truenas_version }} (${{ inputs.train_name }})
-
-            **HailoRT Driver:** ${{ inputs.hailo_driver_version }}
-            **Target Device:** Hailo-8 AI Accelerator (PCIe)
-
-            ### Included Components
-            - `hailo_pci.ko` — PCIe kernel module (compiled for this TrueNAS kernel)
-            - `libhailort.so` — HailoRT runtime library
-            - `hailortcli` — HailoRT command-line tool
-            - `hailo-load.service` — Systemd service for automatic module loading
-            - `51-hailo-udev.rules` — Udev rules for device permissions
-
-            > **Note:** Hailo-8 firmware (`hailo8_fw.bin`) is proprietary and downloaded
-            > directly from Hailo's servers during installation. It is not included in this release.
-
-            ### Install
-            ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/v${{ inputs.truenas_version }}-hailo${{ inputs.hailo_driver_version }}/install.sh | sudo bash
-            ```
-
-            ### Verify
-            ```bash
-            hailortcli fw-control identify
-            ls -la /dev/hailo*
-            ```
-
-            ### Checksums
-            See `hailo.raw.sha256` for verification.
+          body_path: release-notes.md
           files: |
             hailo.raw
             hailo.raw.sha256
