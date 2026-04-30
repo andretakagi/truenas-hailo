@@ -61,10 +61,12 @@ sudo bash install.sh --repo=andretakagi/truenas-hailo --pool=fast
 ### Verify
 
 ```bash
-ls -la /dev/hailo*                      # Device detected
-lsmod | grep hailo                      # Module loaded
+sudo bash install.sh --check            # Probe device, module, sysext, persistence, middleware
 sudo hailortcli fw-control identify     # Firmware responding
 ```
+
+The `--check` flag is read-only and reports each probe with a `→` hint pointing
+at the next step on any failure — useful when filing a support issue.
 
 ### Uninstall
 
