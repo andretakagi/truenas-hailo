@@ -190,14 +190,24 @@ jobs:
           set -o pipefail
           echo "Currently tracked HailoRT driver: ${CURRENT_DRIVER}"
 
-          git clone --quiet --filter=blob:none --no-checkout --branch hailo8 \
-            https://github.com/hailo-ai/hailort-drivers.git "${RUNNER_TEMP}/hailort-drivers"
+          if ! git clone --quiet --filter=blob:none --no-checkout --branch hailo8 \
+              https://github.com/hailo-ai/hailort-drivers.git "${RUNNER_TEMP}/hailort-drivers"; then
+            echo "::error title=Hailo check::failed to clone hailort-drivers from github.com/hailo-ai/hailort-drivers (hailo8 branch)"
+            exit 1
+          fi
 
+          # An empty LATEST (no matching tags) is intentionally benign here:
+          # CANDIDATE falls through to FRIGATE_PIN, which is the right call
+          # when Hailo's tag listing is momentarily unavailable. The `|| true`
+          # keeps that behaviour under `set -o pipefail`. The explicit
+          # `-z LATEST` branch below is required because `sort -V` orders an
+          # empty string *before* any real version string, which would
+          # otherwise make CANDIDATE empty and silently skip the bump.
           LATEST=$(git -C "${RUNNER_TEMP}/hailort-drivers" tag --merged origin/hailo8 \
             | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
             | sed 's/^v//' \
             | sort -V \
-            | tail -n1)
+            | tail -n1) || true
           echo "Latest available driver tag: ${LATEST}"
 
           # Parse defensively. Soft failures here are dangerous: if we silently
@@ -260,7 +270,11 @@ jobs:
           FRIGATE_PIN="$FRIGATE_MAIN_PIN"
           echo "Frigate pinned version: ${FRIGATE_PIN}"
 
-          CANDIDATE=$(printf '%s\n%s\n' "$LATEST" "$FRIGATE_PIN" | sort -V | head -n1)
+          if [ -z "$LATEST" ]; then
+            CANDIDATE="$FRIGATE_PIN"
+          else
+            CANDIDATE=$(printf '%s\n%s\n' "$LATEST" "$FRIGATE_PIN" | sort -V | head -n1)
+          fi
           echo "Capped candidate version: ${CANDIDATE}"
 
           if [ -n "$CANDIDATE" ] && [ "$CANDIDATE" != "$CURRENT_DRIVER" ]; then
