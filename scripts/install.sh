@@ -283,6 +283,18 @@ trap cleanup EXIT INT TERM
 
 # If a local path is provided, use it; otherwise download from GitHub releases
 if [ -n "$LOCAL_RAW" ]; then
+    # Reject `--help`-suggested invocation `install.sh /tmp/hailo.raw` when
+    # the input is literally at the staging path: cp would refuse with
+    # "are the same file" and the EXIT trap (which always fires) would then
+    # rm -f /tmp/hailo.raw, deleting the user's input. Detect and refuse
+    # rather than risk the data loss; user can copy/move and re-run.
+    LOCAL_REAL=$(realpath "$LOCAL_RAW" 2>/dev/null || echo "$LOCAL_RAW")
+    STAGE_REAL=$(realpath -m /tmp/hailo.raw 2>/dev/null || echo /tmp/hailo.raw)
+    if [ "$LOCAL_REAL" = "$STAGE_REAL" ]; then
+        echo "ERROR: input file is at /tmp/hailo.raw, which collides with the installer's staging path." >&2
+        echo "  Move or copy it to a different path (e.g. /tmp/hailo-input.raw) and re-run." >&2
+        exit 2
+    fi
     echo "Using local hailo.raw: $LOCAL_RAW"
     cp "$LOCAL_RAW" /tmp/hailo.raw
 else
@@ -569,12 +581,18 @@ if_real chmod +x "${PERSIST_DIR}/hailo-preinit.sh"
 PREINIT_SCRIPT="${PERSIST_DIR}/hailo-preinit.sh"
 echo "Registering PREINIT script..."
 
-# Find any existing hailo init script (postinit or preinit). A midclt error
-# is treated the same as not-found here: the create-branch will then call
-# initshutdownscript.create, which fails the same way and exits 1 — no
-# silent double-registration.
+# Find any existing hailo init script (postinit or preinit). A midclt
+# lookup error is NOT the same as not-found: midclt records aren't keyed
+# by command, so falling through to create on a transient query failure
+# can produce a duplicate registration that restore.sh's first-match
+# cleanup won't fully undo. Refuse rather than guess.
 EXISTING_LOOKUP=$(hailo_init_script_lookup)
-[ "$EXISTING_LOOKUP" = "error" ] && EXISTING_LOOKUP=""
+if [ "$EXISTING_LOOKUP" = "error" ]; then
+    echo "ERROR: Could not query TrueNAS middleware to check for existing init scripts." >&2
+    echo "  Refusing to register without a clean lookup — risks duplicate PREINIT entries." >&2
+    echo "  Run 'midclt call initshutdownscript.query' to confirm middleware health, then re-run." >&2
+    exit 1
+fi
 EXISTING_ID="${EXISTING_LOOKUP%%|*}"
 
 # Build the payload via python3 -> json.dumps so PREINIT_SCRIPT is escaped
