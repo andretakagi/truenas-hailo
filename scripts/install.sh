@@ -203,9 +203,18 @@ DRY_RUN=0
 
 for arg in "$@"; do
     case "$arg" in
-        --repo=*) REPO="${arg#*=}" ;;
-        --pool=*) POOL_NAME="${arg#*=}" ;;
-        --persist-path=*) PERSIST_PATH="${arg#*=}" ;;
+        --repo=*)
+            REPO="${arg#*=}"
+            [ -n "$REPO" ] || { echo "ERROR: --repo= requires a non-empty value (e.g., --repo=owner/name)" >&2; exit 2; }
+            ;;
+        --pool=*)
+            POOL_NAME="${arg#*=}"
+            [ -n "$POOL_NAME" ] || { echo "ERROR: --pool= requires a non-empty value" >&2; exit 2; }
+            ;;
+        --persist-path=*)
+            PERSIST_PATH="${arg#*=}"
+            [ -n "$PERSIST_PATH" ] || { echo "ERROR: --persist-path= requires a non-empty value" >&2; exit 2; }
+            ;;
         --check) CHECK_MODE=1 ;;
         --dry-run) DRY_RUN=1 ;;
         --help)
@@ -229,8 +238,18 @@ for arg in "$@"; do
             exit 0
             ;;
         *)
+            # A `curl | sudo bash` user who typos `--pol=fast` or `/tmp/typ.raw`
+            # silently gets auto-detect / a release download — they think their
+            # flag took effect when it didn't. Refuse rather than guess.
             if [ -f "$arg" ]; then
                 LOCAL_RAW="$arg"
+            elif [[ "$arg" == -* ]]; then
+                echo "ERROR: unknown option: $arg (see --help)" >&2
+                exit 2
+            else
+                echo "ERROR: positional argument is not an existing file: $arg" >&2
+                echo "  Pass --help for usage." >&2
+                exit 2
             fi
             ;;
     esac
@@ -246,7 +265,17 @@ if [ "$CHECK_MODE" = "1" ]; then
     exit $?
 fi
 
+# USR_WAS_WRITABLE: 1 while we have ${USR_DATASET}'s readonly=off and
+# haven't restored it yet. The cleanup trap re-asserts readonly=on so
+# any failure path between off and on (cp errors, SIGINT/SIGTERM) does
+# not leave /usr writable until reboot.
+USR_WAS_WRITABLE=0
+
 cleanup() {
+    if [ "$USR_WAS_WRITABLE" = "1" ] && [ -n "${USR_DATASET:-}" ] && [ "$DRY_RUN" != "1" ]; then
+        zfs set readonly=on "${USR_DATASET}" 2>/dev/null || true
+        USR_WAS_WRITABLE=0
+    fi
     rm -f /tmp/hailo.raw /tmp/hailo.raw.sha256 /tmp/hailo8_fw.bin /tmp/hailo-preinit.sh
     rm -rf /tmp/hailo-sysext-unpack
 }
@@ -404,14 +433,26 @@ if_real systemd-sysext unmerge 2>/dev/null || true
 USR_DATASET=$(zfs list -H -o name /usr 2>/dev/null) || { echo "ERROR: Failed to find ZFS dataset for /usr"; exit 1; }
 [ -z "$USR_DATASET" ] && { echo "ERROR: ZFS dataset for /usr is empty"; exit 1; }
 echo "Setting ${USR_DATASET} to writable..."
-if_real zfs set readonly=off "${USR_DATASET}" || { echo "ERROR: Failed to make ${USR_DATASET} writable"; exit 1; }
+if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] would: zfs set readonly=off ${USR_DATASET}"
+else
+    zfs set readonly=off "${USR_DATASET}" || { echo "ERROR: Failed to make ${USR_DATASET} writable"; exit 1; }
+    USR_WAS_WRITABLE=1
+fi
 
-# Install new hailo.raw (backup is on persistent pool, no need for .bak)
+# Install new hailo.raw (backup is on persistent pool, no need for .bak).
+# If cp fails, the cleanup trap re-asserts readonly=on so we never
+# leave /usr writable on the failure path.
 echo "Installing new hailo.raw..."
 if_real cp /tmp/hailo.raw "${HAILO_RAW}"
 
 # Restore read-only
-if_real zfs set readonly=on "${USR_DATASET}"
+if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] would: zfs set readonly=on ${USR_DATASET}"
+else
+    zfs set readonly=on "${USR_DATASET}"
+    USR_WAS_WRITABLE=0
+fi
 
 # Activate sysext via symlink + refresh (TrueNAS middleware pattern)
 echo "Activating hailo sysext..."
@@ -448,7 +489,7 @@ if [ -e /dev/hailo0 ]; then
     echo "Device /dev/hailo0 detected!"
     if command -v hailortcli &>/dev/null; then
         echo "Firmware identification:"
-        hailortcli fw-control --identify 2>/dev/null || echo "(device query failed — may need reboot)"
+        hailortcli fw-control identify 2>/dev/null || echo "(device query failed — may need reboot)"
     fi
 else
     echo "Device /dev/hailo0 not found."
@@ -475,9 +516,17 @@ else
         PERSIST_DIR="/mnt/${POOL_NAME}/.config/hailo"
         echo "Auto-detected pool: ${POOL_NAME}"
     else
-        echo "WARNING: No ZFS pool found (excluding boot-pool). Skipping persistence setup."
-        echo "  Re-run with --pool=<name> or --persist-path=<path> to enable persistence."
-        exit 0
+        # Hard fail rather than exit 0: persistence isn't optional. Without
+        # it, the next reboot wipes the sysext (no PREINIT registered, no
+        # backup on a persistent pool) and the Hailo device disappears. The
+        # `curl | sudo bash` flow makes a printed warning easy to miss —
+        # especially after the earlier "Installation complete" line.
+        echo "ERROR: No ZFS pool found (excluding boot-pool). Cannot set up persistence." >&2
+        echo "  The sysext is loaded for this session but will NOT survive a reboot." >&2
+        echo "  Re-run with one of:" >&2
+        echo "    sudo ./install.sh --pool=<name>" >&2
+        echo "    sudo ./install.sh --persist-path=/mnt/<pool>/<path>" >&2
+        exit 1
     fi
 fi
 
