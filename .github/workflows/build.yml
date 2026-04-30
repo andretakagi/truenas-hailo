@@ -489,6 +489,87 @@ jobs:
           echo "=== Contents ==="
           unsquashfs -l hailo.raw | head -40
 
+      - name: Smoke-test hailo.raw contents
+        run: |
+          # Open the produced squashfs and verify that the assembly step
+          # actually placed every component the release advertises. The
+          # earlier ELF-on-input check (libhailort/hailortcli during
+          # assembly) confirms the source binaries; this confirms they
+          # made it into the final artifact at the right paths. Catches
+          # silent mksquashfs flag drift, kernel-path drift, missing
+          # preinit bundling, etc.
+          set -e
+          SMOKE_TMP="$(mktemp -d)"
+          trap 'rm -rf "$SMOKE_TMP"' EXIT
+
+          unsquashfs -d "${SMOKE_TMP}/extract" hailo.raw
+
+          fail=0
+          require_file() {
+            local rel="$1"
+            local path="${SMOKE_TMP}/extract/${rel}"
+            if [ ! -e "$path" ]; then
+              echo "::error title=smoke-test::missing in hailo.raw: ${rel}"
+              fail=1
+              return
+            fi
+            echo "  ok: ${rel}"
+          }
+          require_elf() {
+            local rel="$1"
+            local path="${SMOKE_TMP}/extract/${rel}"
+            if [ ! -f "$path" ]; then
+              echo "::error title=smoke-test::missing in hailo.raw: ${rel}"
+              fail=1
+              return
+            fi
+            if ! file "$path" | grep -q 'ELF'; then
+              echo "::error title=smoke-test::not an ELF binary: ${rel}"
+              file "$path"
+              fail=1
+              return
+            fi
+            echo "  ok (ELF): ${rel}"
+          }
+
+          echo "=== smoke-test: required paths ==="
+          require_file "usr/lib/extension-release.d/extension-release.hailo"
+          require_file "usr/lib/modules/${REAL_KVER}/extra/hailo_pci.ko"
+          require_elf  "usr/bin/hailortcli"
+          require_file "usr/lib/hailo/hailo-preinit.sh"
+
+          # libhailort.so.* — match the concrete ELF (not the unversioned symlink)
+          LIBHAILORT_REL=$(cd "${SMOKE_TMP}/extract" && find usr/lib/x86_64-linux-gnu -maxdepth 1 -name 'libhailort.so.*' -not -type l | head -1)
+          if [ -z "$LIBHAILORT_REL" ]; then
+            echo "::error title=smoke-test::no concrete libhailort.so.* found in hailo.raw"
+            fail=1
+          else
+            require_elf "$LIBHAILORT_REL"
+          fi
+
+          # vermagic sanity: the kernel module's vermagic must reference REAL_KVER.
+          # If we shipped a module built for the wrong kernel, modprobe-style
+          # version checks would refuse to load it. Catch it before publish.
+          KO_PATH="${SMOKE_TMP}/extract/usr/lib/modules/${REAL_KVER}/extra/hailo_pci.ko"
+          if [ -f "$KO_PATH" ]; then
+            VERMAGIC=$(modinfo -F vermagic "$KO_PATH" 2>/dev/null || true)
+            if [ -z "$VERMAGIC" ]; then
+              echo "::error title=smoke-test::could not read vermagic from hailo_pci.ko"
+              fail=1
+            elif ! printf '%s' "$VERMAGIC" | grep -qF "$REAL_KVER"; then
+              echo "::error title=smoke-test::hailo_pci.ko vermagic does not reference REAL_KVER (${REAL_KVER}); got: ${VERMAGIC}"
+              fail=1
+            else
+              echo "  ok: hailo_pci.ko vermagic references ${REAL_KVER}"
+            fi
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error title=smoke-test::hailo.raw is missing required components — refusing to publish"
+            exit 1
+          fi
+          echo "smoke-test OK"
+
       - name: Generate checksums
         run: |
           sha256sum hailo.raw > hailo.raw.sha256
