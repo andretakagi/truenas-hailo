@@ -12,6 +12,139 @@
 
 set -euo pipefail
 
+# do_check: read-only probe of an existing install. Exits 0 if all checks
+# pass (warnings allowed), 1 if any check fails. Used by --check.
+do_check() {
+    local pass=0 warn=0 fail=0
+    local mark_ok="✓" mark_warn="⚠" mark_fail="✗"
+    local -a status_lines=()
+    local -a hint_lines=()
+
+    record_pass() { status_lines+=("  ${mark_ok} $1"); pass=$((pass+1)); }
+    record_warn() {
+        status_lines+=("  ${mark_warn} $1"); warn=$((warn+1))
+        [ -n "${2:-}" ] && hint_lines+=("    → $2")
+    }
+    record_fail() {
+        status_lines+=("  ${mark_fail} $1"); fail=$((fail+1))
+        [ -n "${2:-}" ] && hint_lines+=("    → $2")
+    }
+
+    echo "=== Hailo-8 install status ==="
+    echo ""
+
+    # 1. PCIe device node
+    if [ -e /dev/hailo0 ]; then
+        record_pass "Device /dev/hailo0 present"
+    else
+        record_fail "Device /dev/hailo0 not present" \
+            "is the Hailo-8 PCIe card seated, and was the system rebooted after install?"
+    fi
+
+    # 2. Kernel module loaded
+    if lsmod 2>/dev/null | awk '{print $1}' | grep -qx hailo_pci; then
+        record_pass "Kernel module hailo_pci loaded"
+    else
+        record_fail "Kernel module hailo_pci not loaded" \
+            "run 'sudo insmod /usr/lib/modules/\$(uname -r)/extra/hailo_pci.ko' or re-run install.sh"
+    fi
+
+    # 3. Sysext file present on disk
+    if [ -f "$HAILO_RAW" ]; then
+        record_pass "Sysext present at ${HAILO_RAW}"
+    else
+        record_fail "Sysext missing at ${HAILO_RAW}" "re-run install.sh"
+    fi
+
+    # 4. Sysext merged into /usr
+    if systemd-sysext list 2>/dev/null | awk '{print $1}' | grep -qx hailo; then
+        record_pass "Sysext merged into /usr"
+    else
+        record_warn "Sysext not currently merged" \
+            "the PREINIT script merges it on boot; check 'systemctl status systemd-sysext'"
+    fi
+
+    # 5. Persistent config dir
+    local persist_dir=""
+    for d in /mnt/*/.config/hailo; do
+        [ -d "$d" ] && persist_dir="$d" && break
+    done
+    if [ -n "$persist_dir" ]; then
+        record_pass "Persistent config at ${persist_dir}"
+    else
+        record_fail "No persistent config under /mnt/*/.config/hailo/" \
+            "re-run install.sh with --pool=NAME or --persist-path=PATH"
+    fi
+
+    # 6. Backup hailo.raw on persistent pool
+    if [ -n "$persist_dir" ] && [ -f "${persist_dir}/hailo.raw" ]; then
+        record_pass "Backup ${persist_dir}/hailo.raw present"
+    elif [ -n "$persist_dir" ]; then
+        record_fail "Backup hailo.raw missing in ${persist_dir}" "re-run install.sh"
+    fi
+
+    # 7. PREINIT script on disk
+    if [ -n "$persist_dir" ] && [ -x "${persist_dir}/hailo-preinit.sh" ]; then
+        record_pass "PREINIT script ${persist_dir}/hailo-preinit.sh present and executable"
+    elif [ -n "$persist_dir" ]; then
+        record_fail "PREINIT script missing or not executable in ${persist_dir}" "re-run install.sh"
+    fi
+
+    # 8. PREINIT registered with TrueNAS middleware (read-only midclt query)
+    if command -v midclt >/dev/null 2>&1; then
+        local registered
+        registered=$(midclt call initshutdownscript.query 2>/dev/null \
+            | python3 -c "
+import sys, json
+try:
+    scripts = json.load(sys.stdin)
+    for s in scripts:
+        cmd = s.get('command', '') or s.get('script', '')
+        if 'hailo-preinit' in cmd or '.config/hailo' in cmd:
+            if s.get('when') == 'PREINIT' and s.get('enabled'):
+                print('yes', end=''); sys.exit(0)
+            print('present-but-misconfigured', end=''); sys.exit(0)
+    print('no', end='')
+except Exception:
+    print('error', end='')
+" 2>/dev/null) || registered=error
+        case "$registered" in
+            yes)  record_pass "PREINIT script registered with TrueNAS middleware (PREINIT, enabled)" ;;
+            no)   record_fail "No init script registered for hailo" "re-run install.sh" ;;
+            present-but-misconfigured)
+                  record_warn "Init script registered but not as enabled PREINIT" \
+                      "re-run install.sh to fix" ;;
+            error|*) record_warn "Could not query TrueNAS middleware" \
+                         "run with sudo on TrueNAS SCALE" ;;
+        esac
+    else
+        record_warn "midclt not available — skipping middleware check" \
+            "this script must run on TrueNAS SCALE"
+    fi
+
+    # 9. Kernel module path matches running kernel
+    local running_kver hailo_ko
+    running_kver=$(uname -r)
+    hailo_ko="/usr/lib/modules/${running_kver}/extra/hailo_pci.ko"
+    if [ -f "$hailo_ko" ]; then
+        record_pass "Kernel module path matches running kernel ${running_kver}"
+    else
+        record_fail "No hailo_pci.ko for running kernel ${running_kver}" \
+            "see docs/troubleshooting.md (kernel-mismatch recovery)"
+    fi
+
+    printf '%s\n' "${status_lines[@]}"
+    echo ""
+    if [ "${#hint_lines[@]}" -gt 0 ]; then
+        printf '%s\n' "${hint_lines[@]}"
+        echo ""
+    fi
+    printf 'Summary: %d ok, %d warn, %d fail\n' "$pass" "$warn" "$fail"
+
+    [ "$fail" -gt 0 ] && return 1
+    return 0
+}
+
 # REPO can be overridden via --repo=OWNER/NAME or HAILO_REPO env var
 # Default falls back to upstream
 REPO="${HAILO_REPO:-scyto/truenas-hailo}"
@@ -22,12 +155,14 @@ HAILO_RAW="${SYSEXT_DIR}/hailo.raw"
 LOCAL_RAW=""
 POOL_NAME=""
 PERSIST_PATH=""
+CHECK_MODE=0
 
 for arg in "$@"; do
     case "$arg" in
         --repo=*) REPO="${arg#*=}" ;;
         --pool=*) POOL_NAME="${arg#*=}" ;;
         --persist-path=*) PERSIST_PATH="${arg#*=}" ;;
+        --check) CHECK_MODE=1 ;;
         --help)
             echo "Usage: sudo ./install.sh [OPTIONS] [path-to-hailo.raw]"
             echo ""
@@ -36,10 +171,12 @@ for arg in "$@"; do
             echo "                           Can also be set via HAILO_REPO env var."
             echo "  --pool=NAME              ZFS pool for persistent config (e.g., fast)"
             echo "  --persist-path=PATH      Exact path for persistent config"
+            echo "  --check                  Probe an existing install (read-only) and report status"
             echo "  --help                   Show this help"
             echo ""
             echo "Examples:"
             echo "  sudo ./install.sh --pool=fast"
+            echo "  sudo ./install.sh --check"
             echo "  sudo ./install.sh /tmp/hailo.raw"
             echo "  curl -fsSL <url>/install.sh | sudo bash"
             exit 0
@@ -51,6 +188,11 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+if [ "$CHECK_MODE" = "1" ]; then
+    do_check
+    exit $?
+fi
 
 cleanup() {
     rm -f /tmp/hailo.raw /tmp/hailo.raw.sha256 /tmp/hailo8_fw.bin

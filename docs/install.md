@@ -30,6 +30,7 @@ sudo bash install.sh --repo=andretakagi/truenas-hailo /tmp/hailo.raw
 | `--repo=OWNER/NAME` | GitHub repo to download release from (default: `andretakagi/truenas-hailo`). Can also be set via `HAILO_REPO` env var. |
 | `--pool=NAME` | ZFS pool for persistent config (e.g., `fast`) |
 | `--persist-path=PATH` | Exact path for persistent config directory |
+| `--check` | Probe an existing install (read-only) and report status. Exits 0 if all checks pass, 1 otherwise. |
 | `--help` | Show usage help |
 
 ## What the Install Script Does

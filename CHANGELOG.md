@@ -8,6 +8,7 @@ This file records changes in `andretakagi/truenas-hailo` that differ from the up
 - **Branch-aware preinit error messages.** `hailo-preinit.sh` reads `.hailo-repo` and points kernel-mismatch error output at the source fork's releases page, falling back to upstream if the file is missing.
 - **Loud failure on missing HailoRT version.** Install/preinit now exit with a clear error if the HailoRT version cannot be determined, instead of silently proceeding with bad state.
 - **Bounded curl downloads.** `install.sh` caps every release/firmware/install-script download with `--max-time`, so a stalled connection fails fast instead of hanging the install indefinitely.
+- **`install.sh --check`.** Read-only probe of an existing install: device node, kernel module, sysext file/merge state, persistent config + backup, PREINIT script + middleware registration, and kernel-version match. Each failure includes a one-line hint at the next step. Exits 1 if any check fails. Useful for support reports.
 
 ## Sysext Activation on TrueNAS
 
