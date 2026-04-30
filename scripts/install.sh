@@ -233,7 +233,7 @@ for arg in "$@"; do
             echo "  sudo ./install.sh --pool=fast"
             echo "  sudo ./install.sh --check"
             echo "  sudo ./install.sh --dry-run"
-            echo "  sudo ./install.sh /tmp/hailo.raw"
+            echo "  sudo ./install.sh /tmp/hailo-input.raw   # any path other than /tmp/hailo.raw (staging)"
             echo "  curl -fsSL <url>/install.sh | sudo bash"
             exit 0
             ;;
@@ -283,11 +283,11 @@ trap cleanup EXIT INT TERM
 
 # If a local path is provided, use it; otherwise download from GitHub releases
 if [ -n "$LOCAL_RAW" ]; then
-    # Reject `--help`-suggested invocation `install.sh /tmp/hailo.raw` when
-    # the input is literally at the staging path: cp would refuse with
-    # "are the same file" and the EXIT trap (which always fires) would then
-    # rm -f /tmp/hailo.raw, deleting the user's input. Detect and refuse
-    # rather than risk the data loss; user can copy/move and re-run.
+    # Reject input path == /tmp/hailo.raw (the installer's staging path):
+    # cp would refuse with "are the same file" and the EXIT trap (which
+    # always fires) would then rm -f /tmp/hailo.raw, deleting the user's
+    # input. Detect and refuse rather than risk the data loss; user can
+    # copy/move and re-run.
     LOCAL_REAL=$(realpath "$LOCAL_RAW" 2>/dev/null || echo "$LOCAL_RAW")
     STAGE_REAL=$(realpath -m /tmp/hailo.raw 2>/dev/null || echo /tmp/hailo.raw)
     if [ "$LOCAL_REAL" = "$STAGE_REAL" ]; then

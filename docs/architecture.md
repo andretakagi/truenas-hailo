@@ -266,6 +266,11 @@ The script:
 
 The script is idempotent — on a normal reboot where checksums match, it skips the copy but still activates the sysext and loads the module.
 
+Two safety behaviors guard the unlock path:
+
+- **`trap restore_usr_readonly EXIT INT TERM`** re-asserts `readonly=on` on the `/usr` ZFS dataset on any exit path, so a SIGINT/SIGTERM (or unexpected error) between unlock and re-lock does not leave `/usr` writable until reboot. `install.sh` and `restore.sh` mirror the same trap pattern.
+- **Empty-hash defensive reinstall.** If `sha256sum` returns an empty hash for either the installed sysext or the backup (rare: ZFS read error, pool flap at PREINIT, overlay weirdness), the script logs a warning and reinstalls from backup rather than treating two empty strings as a match and silently leaving a possibly-broken sysext active.
+
 ### Pool Selection
 
 See [install.md § Pool Selection](install.md#pool-selection) for the resolution order. The PREINIT script finds the config at boot by scanning `/mnt/*/.config/hailo/`, so the pool name doesn't need to be persisted anywhere.

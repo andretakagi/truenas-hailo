@@ -15,9 +15,11 @@ Or download `hailo.raw` manually and install it:
 
 ```bash
 # Download hailo.raw from a specific release
-curl -fSL https://github.com/andretakagi/truenas-hailo/releases/download/v25.10.3-hailo4.21.0/hailo.raw -o /tmp/hailo.raw
-sudo bash install.sh --repo=andretakagi/truenas-hailo /tmp/hailo.raw
+curl -fSL https://github.com/andretakagi/truenas-hailo/releases/download/v25.10.3-hailo4.21.0/hailo.raw -o /tmp/hailo-input.raw
+sudo bash install.sh --repo=andretakagi/truenas-hailo /tmp/hailo-input.raw
 ```
+
+> **Note:** The path `/tmp/hailo.raw` is the installer's staging path and is rejected as a positional argument (would self-cp + clobber via the cleanup trap). Save the download to any other path.
 
 > **Warning:** Using a `hailo.raw` built for a different TrueNAS version will fail to load
 > the kernel module. The module is compiled against exact kernel headers — a version mismatch
