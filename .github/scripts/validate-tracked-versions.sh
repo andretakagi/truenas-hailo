@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Validate that .github/tracked-versions.json has the shape the rest of the
+# CI machinery (check-releases.yml, sync-build-defaults.sh) assumes.
+#
+# Run locally:
+#   .github/scripts/validate-tracked-versions.sh
+# Exits non-zero with a `::error::` annotation on any shape violation.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+FILE="${REPO_ROOT}/.github/tracked-versions.json"
+
+if [ ! -f "$FILE" ]; then
+  echo "::error title=tracked-versions::file not found: ${FILE}" >&2
+  exit 1
+fi
+
+python3 - "$FILE" <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+
+def fail(msg):
+    print(f"::error title=tracked-versions::{msg}", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    with open(path) as f:
+        data = json.load(f)
+except json.JSONDecodeError as e:
+    fail(f"invalid JSON in {path}: {e}")
+
+if not isinstance(data, dict):
+    fail("top-level value must be an object")
+
+# TrueNAS tags can be 3- or 4-part (e.g. 25.10.3 and 25.10.3.1 both ship).
+ver_re = re.compile(r"^\d+\.\d+\.\d+(\.\d+)?$")
+# Hailo uses strict semver: X.Y.Z only (no 4-part variants).
+hailo_ver_re = re.compile(r"^\d+\.\d+\.\d+$")
+
+truenas = data.get("truenas")
+if not isinstance(truenas, dict):
+    fail("'truenas' key missing or not an object")
+
+tn_version = truenas.get("version")
+if not isinstance(tn_version, str) or not ver_re.match(tn_version):
+    fail(f"'truenas.version' missing or malformed (got {tn_version!r}); expected X.Y.Z[.W]")
+
+tn_train = truenas.get("train")
+if not isinstance(tn_train, str) or not tn_train.strip():
+    fail(f"'truenas.train' missing or empty (got {tn_train!r})")
+
+hailo = data.get("hailo")
+if not isinstance(hailo, dict):
+    fail("'hailo' key missing or not an object")
+
+h_driver = hailo.get("driver")
+if not isinstance(h_driver, str) or not hailo_ver_re.match(h_driver):
+    fail(f"'hailo.driver' missing or malformed (got {h_driver!r}); expected X.Y.Z")
+
+print(f"tracked-versions OK: TrueNAS {tn_version} ({tn_train}), HailoRT {h_driver}")
+PY

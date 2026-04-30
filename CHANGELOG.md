@@ -28,6 +28,7 @@ This file records changes in `andretakagi/truenas-hailo` that differ from the up
 - **Auto-synced `workflow_dispatch` defaults.** Each auto-bump commit also rewrites `build.yml`'s `workflow_dispatch` defaults via `.github/scripts/sync-build-defaults.sh`, so a manual "Run workflow" in the Actions UI always pre-fills the latest tracked combination (TrueNAS version, train, HailoRT driver, runner). The substitution is structurally validated and fails loud if `build.yml`'s shape drifts.
 - **Lint workflow with shellcheck and PREINIT-sync gate.** `.github/workflows/lint.yml` runs `shellcheck --severity=warning` against all shipped shell scripts (`scripts/*.sh`, `.github/scripts/*.sh`) and runs `check-preinit-sync.sh` to ensure the standalone `hailo-preinit.sh` and the heredoc copy embedded in `install.sh` cannot drift apart.
 - **Dependabot for `github-actions`.** `.github/dependabot.yml` opens weekly PRs to bump action major versions, so floating `@v4`/`@v7` references don't drift silently.
+- **`tracked-versions.json` shape gate.** `.github/scripts/validate-tracked-versions.sh` runs in `lint.yml` and fails the build if `.github/tracked-versions.json` is malformed JSON, missing `truenas.{version,train}` / `hailo.driver`, has an empty train, or has a version string that doesn't match `X.Y.Z[.W]`. Catches hand-edits before they break a scheduled `check-releases` run.
 
 ## Documentation
 

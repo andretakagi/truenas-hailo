@@ -7,11 +7,13 @@ on:
       - 'scripts/**.sh'
       - '.github/scripts/**.sh'
       - '.github/workflows/lint.yml'
+      - '.github/tracked-versions.json'
   pull_request:
     paths:
       - 'scripts/**.sh'
       - '.github/scripts/**.sh'
       - '.github/workflows/lint.yml'
+      - '.github/tracked-versions.json'
   workflow_dispatch:
 
 permissions:
@@ -37,3 +39,10 @@ jobs:
             scripts/hailo-preinit.sh \
             scripts/restore.sh \
             .github/scripts/*.sh
+
+  tracked-versions:
+    name: tracked-versions.json shape
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/validate-tracked-versions.sh
