@@ -36,8 +36,11 @@ except json.JSONDecodeError as e:
 if not isinstance(data, dict):
     fail("top-level value must be an object")
 
-# TrueNAS tags can be 3- or 4-part (e.g. 25.10.3 and 25.10.3.1 both ship).
-ver_re = re.compile(r"^\d+\.\d+\.\d+(\.\d+)?$")
+# Match the shape check-releases.yml's tag parser will accept: 2-or-more
+# numeric parts. Today's TrueNAS tags are 3- or 4-part (25.10.3, 25.10.3.1)
+# but a future train (e.g. TS-26.0) could legitimately be 2-part. Capping at
+# 5 parts so a runaway tag still trips the gate.
+ver_re = re.compile(r"^\d+(\.\d+){1,4}$")
 # Hailo uses strict semver: X.Y.Z only (no 4-part variants).
 hailo_ver_re = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -47,7 +50,7 @@ if not isinstance(truenas, dict):
 
 tn_version = truenas.get("version")
 if not isinstance(tn_version, str) or not ver_re.match(tn_version):
-    fail(f"'truenas.version' missing or malformed (got {tn_version!r}); expected X.Y.Z[.W]")
+    fail(f"'truenas.version' missing or malformed (got {tn_version!r}); expected X.Y[.Z[.W[.V]]]")
 
 tn_train = truenas.get("train")
 if not isinstance(tn_train, str) or not tn_train.strip():
