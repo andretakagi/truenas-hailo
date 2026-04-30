@@ -277,6 +277,17 @@ jobs:
           fi
           echo "Capped candidate version: ${CANDIDATE}"
 
+          # Surface when the cap is actively suppressing a newer Hailo release.
+          # Useful for noticing when Frigate is the bottleneck without trawling
+          # scheduled-run logs. Only fires when LATEST is parseable (otherwise
+          # the cap-vs-no-cap signal is noise).
+          if [ -n "$LATEST" ]; then
+            HIGHEST=$(printf '%s\n%s\n' "$LATEST" "$FRIGATE_PIN" | sort -V | tail -n1)
+            if [ "$HIGHEST" = "$LATEST" ] && [ "$LATEST" != "$FRIGATE_PIN" ]; then
+              echo "::notice title=Frigate cap active::HailoRT ${LATEST} available but capped at Frigate's pinned ${FRIGATE_PIN}"
+            fi
+          fi
+
           if [ -n "$CANDIDATE" ] && [ "$CANDIDATE" != "$CURRENT_DRIVER" ]; then
             HIGHER=$(printf '%s\n%s\n' "$CURRENT_DRIVER" "$CANDIDATE" | sort -V | tail -n1)
             if [ "$HIGHER" = "$CANDIDATE" ]; then
