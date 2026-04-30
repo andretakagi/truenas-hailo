@@ -9,6 +9,7 @@ This file records changes in `andretakagi/truenas-hailo` that differ from the up
 - **Loud failure on missing HailoRT version.** Install/preinit now exit with a clear error if the HailoRT version cannot be determined, instead of silently proceeding with bad state.
 - **Bounded curl downloads.** `install.sh` caps every release/firmware/install-script download with `--max-time`, so a stalled connection fails fast instead of hanging the install indefinitely.
 - **`install.sh --check`.** Read-only probe of an existing install: device node, kernel module, sysext file/merge state, persistent config + backup, PREINIT script + middleware registration, and kernel-version match. Each failure includes a one-line hint at the next step. Exits 1 if any check fails. Useful for support reports.
+- **`install.sh --dry-run`.** Performs every read/network/validation step (release lookup, sha256 verify, firmware download, squashfs unpack/repack) but skips every command that mutates the running system. Each skipped mutation is logged as `[dry-run] would: <command>` and the run ends with a summary of what would have been installed. Mutually exclusive with `--check`.
 
 ## Sysext Activation on TrueNAS
 

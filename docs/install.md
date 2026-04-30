@@ -31,6 +31,7 @@ sudo bash install.sh --repo=andretakagi/truenas-hailo /tmp/hailo.raw
 | `--pool=NAME` | ZFS pool for persistent config (e.g., `fast`) |
 | `--persist-path=PATH` | Exact path for persistent config directory |
 | `--check` | Probe an existing install (read-only) and report status. Exits 0 if all checks pass, 1 otherwise. |
+| `--dry-run` | Validate everything (downloads, checksums, firmware availability, squashfs repack) without modifying the system. Exits 0 if everything would have succeeded. |
 | `--help` | Show usage help |
 
 ## What the Install Script Does

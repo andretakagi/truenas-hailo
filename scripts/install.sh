@@ -156,6 +156,7 @@ LOCAL_RAW=""
 POOL_NAME=""
 PERSIST_PATH=""
 CHECK_MODE=0
+DRY_RUN=0
 
 for arg in "$@"; do
     case "$arg" in
@@ -163,6 +164,7 @@ for arg in "$@"; do
         --pool=*) POOL_NAME="${arg#*=}" ;;
         --persist-path=*) PERSIST_PATH="${arg#*=}" ;;
         --check) CHECK_MODE=1 ;;
+        --dry-run) DRY_RUN=1 ;;
         --help)
             echo "Usage: sudo ./install.sh [OPTIONS] [path-to-hailo.raw]"
             echo ""
@@ -172,11 +174,13 @@ for arg in "$@"; do
             echo "  --pool=NAME              ZFS pool for persistent config (e.g., fast)"
             echo "  --persist-path=PATH      Exact path for persistent config"
             echo "  --check                  Probe an existing install (read-only) and report status"
+            echo "  --dry-run                Validate everything (downloads, checksums, network) without modifying the system"
             echo "  --help                   Show this help"
             echo ""
             echo "Examples:"
             echo "  sudo ./install.sh --pool=fast"
             echo "  sudo ./install.sh --check"
+            echo "  sudo ./install.sh --dry-run"
             echo "  sudo ./install.sh /tmp/hailo.raw"
             echo "  curl -fsSL <url>/install.sh | sudo bash"
             exit 0
@@ -189,6 +193,11 @@ for arg in "$@"; do
     esac
 done
 
+if [ "$CHECK_MODE" = "1" ] && [ "$DRY_RUN" = "1" ]; then
+    echo "ERROR: --check and --dry-run are mutually exclusive" >&2
+    exit 2
+fi
+
 if [ "$CHECK_MODE" = "1" ]; then
     do_check
     exit $?
@@ -199,6 +208,18 @@ cleanup() {
     rm -rf /tmp/hailo-sysext-unpack
 }
 trap cleanup EXIT INT TERM
+
+# if_real: run a command unless --dry-run is set, in which case print what
+# would have been run. For redirections and heredocs, gate the entire block
+# manually with `if [ "$DRY_RUN" = "1" ]; then ... else ... fi` since the
+# shell evaluates redirections before the command runs.
+if_real() {
+    if [ "$DRY_RUN" = "1" ]; then
+        printf '[dry-run] would: %s\n' "$*"
+    else
+        "$@"
+    fi
+}
 
 # If a local path is provided, use it; otherwise download from GitHub releases
 if [ -n "$LOCAL_RAW" ]; then
@@ -328,34 +349,36 @@ echo "=== Installing hailo.raw ==="
 
 # Remove hailo from sysext before modifying
 echo "Removing old hailo sysext symlink..."
-rm -f /run/extensions/hailo.raw
-systemd-sysext unmerge 2>/dev/null || true
+if_real rm -f /run/extensions/hailo.raw
+if_real systemd-sysext unmerge 2>/dev/null || true
 
 # Make /usr writable
 USR_DATASET=$(zfs list -H -o name /usr 2>/dev/null) || { echo "ERROR: Failed to find ZFS dataset for /usr"; exit 1; }
 [ -z "$USR_DATASET" ] && { echo "ERROR: ZFS dataset for /usr is empty"; exit 1; }
 echo "Setting ${USR_DATASET} to writable..."
-zfs set readonly=off "${USR_DATASET}" || { echo "ERROR: Failed to make ${USR_DATASET} writable"; exit 1; }
+if_real zfs set readonly=off "${USR_DATASET}" || { echo "ERROR: Failed to make ${USR_DATASET} writable"; exit 1; }
 
 # Install new hailo.raw (backup is on persistent pool, no need for .bak)
 echo "Installing new hailo.raw..."
-cp /tmp/hailo.raw "${HAILO_RAW}"
+if_real cp /tmp/hailo.raw "${HAILO_RAW}"
 
 # Restore read-only
-zfs set readonly=on "${USR_DATASET}"
+if_real zfs set readonly=on "${USR_DATASET}"
 
 # Activate sysext via symlink + refresh (TrueNAS middleware pattern)
 echo "Activating hailo sysext..."
-mkdir -p /run/extensions
-ln -sf "${HAILO_RAW}" /run/extensions/hailo.raw
-systemd-sysext refresh
-ldconfig
+if_real mkdir -p /run/extensions
+if_real ln -sf "${HAILO_RAW}" /run/extensions/hailo.raw
+if_real systemd-sysext refresh
+if_real ldconfig
 
 # Load the kernel module (use insmod directly — /lib/modules is read-only on TrueNAS
 # so depmod can't update module deps, and modprobe can't find modules without it)
 echo "Loading Hailo kernel module..."
 HAILO_KO="/usr/lib/modules/$(uname -r)/extra/hailo_pci.ko"
-if [ -f "$HAILO_KO" ]; then
+if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] would: insmod ${HAILO_KO} (if present)"
+elif [ -f "$HAILO_KO" ]; then
     insmod "$HAILO_KO" || echo "WARNING: insmod hailo_pci failed (device may not be present)"
 else
     echo "WARNING: hailo_pci.ko not found at ${HAILO_KO}"
@@ -363,9 +386,9 @@ fi
 
 # Reload udev rules from sysext so /dev/hailo0 gets correct permissions
 echo "Reloading udev rules..."
-udevadm control --reload-rules 2>/dev/null || true
+if_real udevadm control --reload-rules 2>/dev/null || true
 if [ -e /dev/hailo0 ]; then
-    udevadm trigger /dev/hailo0 2>/dev/null || true
+    if_real udevadm trigger /dev/hailo0 2>/dev/null || true
 fi
 
 echo ""
@@ -411,18 +434,26 @@ else
 fi
 
 echo "Persistent config directory: ${PERSIST_DIR}"
-mkdir -p "$PERSIST_DIR"
+if_real mkdir -p "$PERSIST_DIR"
 
 # --- Backup hailo.raw (with firmware inside) to persistent storage ---
 echo "Backing up hailo.raw to persistent storage..."
-cp /tmp/hailo.raw "${PERSIST_DIR}/hailo.raw"
+if_real cp /tmp/hailo.raw "${PERSIST_DIR}/hailo.raw"
 
 # Save HailoRT version for reference
-echo -n "$HAILO_VERSION" > "${PERSIST_DIR}/.hailo-driver-version"
+if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] would: write \$HAILO_VERSION (${HAILO_VERSION}) to ${PERSIST_DIR}/.hailo-driver-version"
+else
+    echo -n "$HAILO_VERSION" > "${PERSIST_DIR}/.hailo-driver-version"
+fi
 
 # Save source repo so the boot-time PREINIT script can point users at the right
 # releases page when a kernel mismatch is detected.
-echo -n "$REPO" > "${PERSIST_DIR}/.hailo-repo"
+if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] would: write \$REPO (${REPO}) to ${PERSIST_DIR}/.hailo-repo"
+else
+    echo -n "$REPO" > "${PERSIST_DIR}/.hailo-repo"
+fi
 
 # --- Write PREINIT script to persistent storage ---
 # NOTE: This is an inline copy of scripts/hailo-preinit.sh.
@@ -430,9 +461,12 @@ echo -n "$REPO" > "${PERSIST_DIR}/.hailo-repo"
 echo "Writing PREINIT script..."
 
 # Clean up old postinit script if present
-rm -f "${PERSIST_DIR}/hailo-postinit.sh"
+if_real rm -f "${PERSIST_DIR}/hailo-postinit.sh"
 
-cat > "${PERSIST_DIR}/hailo-preinit.sh" <<'PREINIT_EOF'
+if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] would: write PREINIT script to ${PERSIST_DIR}/hailo-preinit.sh and chmod +x"
+else
+    cat > "${PERSIST_DIR}/hailo-preinit.sh" <<'PREINIT_EOF'
 #!/usr/bin/env bash
 # TrueNAS PREINIT script: activates hailo.raw sysext on every boot.
 # Runs before middleware starts, so the Hailo device is ready before
@@ -561,7 +595,8 @@ fi
 log "Done"
 exit 0
 PREINIT_EOF
-chmod +x "${PERSIST_DIR}/hailo-preinit.sh"
+    chmod +x "${PERSIST_DIR}/hailo-preinit.sh"
+fi
 
 # --- Register PREINIT script via midclt ---
 PREINIT_SCRIPT="${PERSIST_DIR}/hailo-preinit.sh"
@@ -598,14 +633,14 @@ print(json.dumps({
 
 if [ -n "$EXISTING_ID" ]; then
     echo "Hailo init script already registered (id: ${EXISTING_ID}), updating to PREINIT..."
-    if ! midclt call initshutdownscript.update "$EXISTING_ID" "$PREINIT_PAYLOAD"; then
+    if ! if_real midclt call initshutdownscript.update "$EXISTING_ID" "$PREINIT_PAYLOAD"; then
         echo "ERROR: Failed to update init script (id: ${EXISTING_ID})." >&2
         echo "ERROR: Without a registered PREINIT script the sysext will NOT survive a reboot." >&2
         echo "ERROR: Check 'midclt call initshutdownscript.query' and re-run the installer." >&2
         exit 1
     fi
 else
-    if ! midclt call initshutdownscript.create "$PREINIT_PAYLOAD"; then
+    if ! if_real midclt call initshutdownscript.create "$PREINIT_PAYLOAD"; then
         echo "ERROR: Failed to register PREINIT script via midclt." >&2
         echo "ERROR: Without a registered PREINIT script the sysext will NOT survive a reboot." >&2
         echo "ERROR: Check that the TrueNAS middleware is reachable (midclt call core.ping) and re-run." >&2
@@ -623,3 +658,15 @@ echo "  .hailo-driver-version    — HailoRT version (informational)"
 echo "  hailo-preinit.sh         — runs before apps start (registered as PREINIT)"
 echo ""
 echo "The Hailo-8 driver will survive TrueNAS updates and reboots."
+
+if [ "$DRY_RUN" = "1" ]; then
+    echo ""
+    echo "=== Dry-run complete ==="
+    echo "No changes were made to the system."
+    echo ""
+    echo "Would have installed:"
+    echo "  Sysext target:     ${HAILO_RAW}"
+    echo "  Persistent dir:    ${PERSIST_DIR}"
+    echo "  HailoRT version:   ${HAILO_VERSION}"
+    [ -n "${RELEASE_TAG:-}" ] && echo "  Release tag:       ${RELEASE_TAG}"
+fi
