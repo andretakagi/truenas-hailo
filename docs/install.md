@@ -45,8 +45,10 @@ Reports the state of nine things on a system that already has Hailo installed: t
 Exits 0 if everything is healthy (warnings allowed), 1 if any check fails. Useful for confirming an install is sound and for gathering state to attach to a support report.
 
 ```bash
-sudo bash install.sh --check
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/latest/download/install.sh | sudo bash -s -- --check
 ```
+
+If you already have a local `install.sh` (e.g., downloaded for a `--pool=` install), `sudo bash install.sh --check` works too.
 
 ### `--dry-run` — validate without modifying the system
 

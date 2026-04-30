@@ -61,8 +61,8 @@ sudo bash install.sh --repo=andretakagi/truenas-hailo --pool=fast
 ### Verify
 
 ```bash
-sudo bash install.sh --check            # Probe device, module, sysext, persistence, middleware
-sudo hailortcli fw-control identify     # Firmware responding
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/latest/download/install.sh | sudo bash -s -- --check    # Probe device, module, sysext, persistence, middleware
+sudo hailortcli fw-control identify                                                                                       # Firmware responding
 ```
 
 The `--check` flag is read-only and reports each probe with a `→` hint pointing
