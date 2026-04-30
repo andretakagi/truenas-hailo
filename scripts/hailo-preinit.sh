@@ -95,14 +95,18 @@ if [ -f "$HAILO_KO" ]; then
     log "Loading Hailo module..."
     insmod "$HAILO_KO" || log "WARNING: insmod hailo_pci failed (device may not be present)"
 else
-    # Module path doesn't match running kernel — likely a TrueNAS update changed the kernel
+    # Module path doesn't match running kernel — likely a TrueNAS update changed the kernel.
+    # Identify the sysext's kernel by looking for the actual hailo_pci.ko under
+    # /usr/lib/modules/*/extra/ rather than picking the first non-running directory:
+    # after multiple TrueNAS upgrades several kernel dirs can coexist there, and
+    # whichever sorts earliest may not be the one the sysext was built for.
     SYSEXT_KVER=""
     running_kver=$(uname -r)
     for d in /usr/lib/modules/*/; do
         [ -d "$d" ] || continue
         name=${d%/}
         name=${name##*/}
-        if [ "$name" != "$running_kver" ]; then
+        if [ "$name" != "$running_kver" ] && [ -f "${d}extra/hailo_pci.ko" ]; then
             SYSEXT_KVER="$name"
             break
         fi
