@@ -394,6 +394,13 @@ fi
 echo ""
 echo "=== Downloading Hailo-8 firmware ==="
 
+# Fetch tracked-versions.json once and reuse for both HAILO_VERSION fallback
+# and firmware-sha256 verification below. Two fetches in close succession
+# would open a small TOCTOU window where a push between them could leave
+# version and sha256 inconsistent.
+TRACKED_VERSIONS_JSON=$(curl -sf --max-time 30 \
+    "https://raw.githubusercontent.com/${REPO}/main/.github/tracked-versions.json" 2>/dev/null) || TRACKED_VERSIONS_JSON=""
+
 # Determine HailoRT version from release tag or the repo's tracked-versions
 # state file. The release tag is the primary source (format v<truenas>-hailo<driver>);
 # the JSON fallback handles tag-format drift.
@@ -401,8 +408,8 @@ HAILO_VERSION=""
 if [ -n "${RELEASE_TAG:-}" ]; then
     HAILO_VERSION=$(echo "$RELEASE_TAG" | sed -n 's/.*hailo\([0-9.]*\)$/\1/p')
 fi
-if [ -z "$HAILO_VERSION" ]; then
-    HAILO_VERSION=$(curl -sf --max-time 30 "https://raw.githubusercontent.com/${REPO}/main/.github/tracked-versions.json" \
+if [ -z "$HAILO_VERSION" ] && [ -n "$TRACKED_VERSIONS_JSON" ]; then
+    HAILO_VERSION=$(printf '%s' "$TRACKED_VERSIONS_JSON" \
         | python3 -c "import sys,json; print(json.load(sys.stdin)['hailo']['driver'])" 2>/dev/null) || true
 fi
 if [ -z "$HAILO_VERSION" ]; then
@@ -431,17 +438,19 @@ echo "Firmware downloaded: $(ls -lh /tmp/hailo8_fw.bin)"
 
 # --- Verify firmware against published sha256 ---
 # The fork's tracked-versions.json records the sha256 of the firmware that
-# matches the tracked HailoRT driver. Fetch it from the same repo the
-# installer is sourcing the release from (REPO is honored by --repo= and
-# HAILO_REPO). Hard-fail rather than skip — once the schema has the field,
-# a missing or wrong value means the installer is talking to a stale or
-# tampered tracked-versions.json and we should not proceed.
+# matches the tracked HailoRT driver. Reuses the JSON fetched earlier (same
+# snapshot used to resolve HAILO_VERSION) so the version and sha256 always
+# come from the same point-in-time view of the source repo. Hard-fail
+# rather than skip — once the schema has the field, a missing or wrong
+# value means the installer is talking to a stale or tampered
+# tracked-versions.json and we should not proceed. This block is
+# intentionally unconditional (runs even under --dry-run): a dry-run that
+# skips integrity checks would give false confidence.
 echo "Verifying firmware sha256..."
 LOCAL_FW_SHA=$(sha256sum /tmp/hailo8_fw.bin | awk '{print $1}')
 echo "  local sha256:  ${LOCAL_FW_SHA}"
 
-PUBLISHED_FW_SHA=$(curl -sf --max-time 30 \
-    "https://raw.githubusercontent.com/${REPO}/main/.github/tracked-versions.json" \
+PUBLISHED_FW_SHA=$(printf '%s' "$TRACKED_VERSIONS_JSON" \
     | python3 -c "
 import sys, json
 try:
