@@ -30,6 +30,17 @@ The `hailo.raw` sysext contains:
 > It is proprietary (Hailo's EULA prohibits redistribution) and is downloaded
 > directly from Hailo's servers during installation.
 
+## Compatibility
+
+| Device | Supported | Notes |
+| --- | --- | --- |
+| Hailo-8  | ✅ | Primary target |
+| Hailo-8L | ✅ | Same driver / kernel module; Frigate uses the `hailo8l` detector type for both |
+| Hailo-10 | ❌ | Lives on `master` of [`hailort-drivers`](https://github.com/hailo-ai/hailort-drivers) (5.x line) — not built by this project |
+| Hailo-15 | ❌ | Same — not built by this project |
+
+This sysext builds the `hailo_pci` kernel module from the **`hailo8` branch** of [`hailort-drivers`](https://github.com/hailo-ai/hailort-drivers). The `master` branch tracks a different driver line for Hailo-10 / Hailo-15 that does not support Hailo-8 silicon. See [docs/architecture.md](docs/architecture.md#hailort-half) for the version-tracking detail.
+
 ## Quick Start
 
 ### Prerequisites
@@ -115,7 +126,6 @@ model:
 ## Important Notes
 
 - The kernel module must match the exact TrueNAS kernel version. If you update TrueNAS, you need a matching sysext build — see [docs/troubleshooting.md](docs/troubleshooting.md#kernel-version-mismatch-after-a-truenas-update) for recovery steps.
-- The `hailort-drivers` repo uses the **`hailo8` branch** for Hailo-8 support. The `master` branch only supports Hailo-10/15.
 - Secure Boot: The unsigned kernel module may require disabling Secure Boot.
 - If firmware download fails during installation, the script aborts — the sysext will not be installed without firmware.
 
