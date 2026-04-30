@@ -352,7 +352,7 @@ jobs:
             FW_URL="https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${NEW_HAILO_DRIVER}/FW/hailo8_fw.${NEW_HAILO_DRIVER}.bin"
             echo "Fetching firmware to compute sha256: ${FW_URL}"
             FW_TMP="${RUNNER_TEMP}/hailo8_fw.${NEW_HAILO_DRIVER}.bin"
-            if ! curl -fsSL --max-time 120 "$FW_URL" -o "$FW_TMP"; then
+            if ! curl -fsSL --max-time 300 "$FW_URL" -o "$FW_TMP"; then
               echo "::error title=firmware-fetch::failed to download ${FW_URL} — refusing to bump driver without a sha256"
               exit 1
             fi
