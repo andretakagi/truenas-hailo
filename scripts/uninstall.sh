@@ -32,4 +32,9 @@ if ! curl -fsSL --max-time 60 \
     echo "ERROR: failed to download restore.sh from ${REPO}/releases/latest" >&2
     exit 1
 fi
-exec bash "$TMP" "$@"
+if [ ! -s "$TMP" ]; then
+    echo "ERROR: downloaded restore.sh is empty (${REPO}/releases/latest)" >&2
+    exit 1
+fi
+bash "$TMP" "$@"
+exit $?

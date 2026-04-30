@@ -106,7 +106,7 @@ The PREINIT script finds the config at boot by scanning `/mnt/*/.config/hailo/`,
 
 ## Uninstalling
 
-To remove the sysext and undo persistence, download `uninstall.sh` (or its alias `restore.sh`) from the matching release and run it as root:
+To remove the sysext and undo persistence, download `uninstall.sh` (or `restore.sh` under its historical name) from the matching release and run it as root:
 
 ```bash
 curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/download/v25.10.3-hailo4.21.0/uninstall.sh | sudo bash
