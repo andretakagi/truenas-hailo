@@ -597,9 +597,9 @@ jobs:
           # The body is regenerated on every dispatch — no template file checked
           # in. REAL_KVER comes from the kernel-detection step (exported via
           # GITHUB_ENV); the rest are workflow inputs / runtime metadata. The
-          # body links to the Frigate install_hailort.sh at the matching tag so
-          # the human gating "Set as latest" can confirm the build matches what
-          # Frigate is actually shipping.
+          # body links to the Frigate install_hailort.sh on the dev branch (the
+          # canonical consumer per CLAUDE.md) so the human gating "Set as latest"
+          # can confirm the build matches what Frigate is actually shipping.
           cat > release-notes.md <<EOF
           ## Hailo-8 Sysext for TrueNAS SCALE ${TRUENAS_VERSION} (${TRAIN_NAME})
 
@@ -609,7 +609,7 @@ jobs:
           | Target kernel | \`${REAL_KVER}\` |
           | Built on | \`${RUNNER_IMAGE}\` |
           | Source commit | [\`${BUILD_SHA}\`](https://github.com/${REPO}/commit/${BUILD_SHA}) |
-          | Frigate compatibility | [install_hailort.sh @ v${HAILO_DRIVER}](https://github.com/blakeblackshear/frigate/blob/dev/docker/main/install_hailort.sh) (pinned: \`${HAILO_DRIVER}\`) |
+          | Frigate compatibility | [install_hailort.sh (dev branch)](https://github.com/blakeblackshear/frigate/blob/dev/docker/main/install_hailort.sh) — pinned HailoRT: \`${HAILO_DRIVER}\` |
 
           **Target Device:** Hailo-8 AI Accelerator (PCIe). For Hailo-10/15, see [README](https://github.com/${REPO}#compatibility).
 
