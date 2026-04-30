@@ -9,6 +9,9 @@
 # Usage: curl -fsSL <release-url>/install.sh | sudo bash
 #    or: sudo ./install.sh [path-to-hailo.raw]
 #    or: sudo ./install.sh --pool=fast
+#    or: sudo ./install.sh --check          (probe an existing install)
+#    or: sudo ./install.sh --dry-run        (validate without modifying)
+# See --help for the full option list.
 
 set -euo pipefail
 
@@ -145,6 +148,18 @@ except Exception:
     return 0
 }
 
+# if_real: run a command unless --dry-run is set, in which case print what
+# would have been run. For redirections and heredocs, gate the entire block
+# manually with `if [ "$DRY_RUN" = "1" ]; then ... else ... fi` since the
+# shell evaluates redirections before the command runs.
+if_real() {
+    if [ "$DRY_RUN" = "1" ]; then
+        printf '[dry-run] would: %s\n' "$*"
+    else
+        "$@"
+    fi
+}
+
 # REPO can be overridden via --repo=OWNER/NAME or HAILO_REPO env var
 # Default falls back to upstream
 REPO="${HAILO_REPO:-scyto/truenas-hailo}"
@@ -208,18 +223,6 @@ cleanup() {
     rm -rf /tmp/hailo-sysext-unpack
 }
 trap cleanup EXIT INT TERM
-
-# if_real: run a command unless --dry-run is set, in which case print what
-# would have been run. For redirections and heredocs, gate the entire block
-# manually with `if [ "$DRY_RUN" = "1" ]; then ... else ... fi` since the
-# shell evaluates redirections before the command runs.
-if_real() {
-    if [ "$DRY_RUN" = "1" ]; then
-        printf '[dry-run] would: %s\n' "$*"
-    else
-        "$@"
-    fi
-}
 
 # If a local path is provided, use it; otherwise download from GitHub releases
 if [ -n "$LOCAL_RAW" ]; then

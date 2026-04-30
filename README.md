@@ -12,6 +12,7 @@ A systemd-sysext package that adds [Hailo-8](https://hailo.ai/) AI accelerator s
 | [docs/install.md](docs/install.md) | Install options, specific versions, persistence, scripts reference |
 | [docs/build.md](docs/build.md) | Build process, firmware handling, automated updates, custom builds |
 | [docs/architecture.md](docs/architecture.md) | Deep technical reference — sysext structure, read-only constraints, NVIDIA comparison |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Recovery from kernel-mismatch errors after TrueNAS upgrades |
 
 ## What's Included
 
