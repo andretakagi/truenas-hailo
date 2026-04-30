@@ -28,3 +28,6 @@ hailo.raw
 hailo.raw.sha256
 *.ko
 build/
+
+# Plan/spec scratchpads from superpowers planning skills.
+docs/superpowers/
