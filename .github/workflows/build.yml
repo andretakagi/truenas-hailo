@@ -624,6 +624,7 @@ jobs:
             hailo.raw.sha256
             scripts/install.sh
             scripts/restore.sh
+            scripts/uninstall.sh
           draft: false
           prerelease: false
           make_latest: ${{ inputs.mark_latest }}

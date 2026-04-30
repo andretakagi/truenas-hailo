@@ -82,8 +82,10 @@ at the next step on any failure — useful when filing a support issue.
 ### Uninstall
 
 ```bash
-curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/latest/download/restore.sh | sudo bash
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/latest/download/uninstall.sh | sudo bash
 ```
+
+> The release also ships `restore.sh` — it does the same thing under the historical name. Use whichever URL you have bookmarked.
 
 ## Using with Frigate
 

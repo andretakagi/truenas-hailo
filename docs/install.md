@@ -106,11 +106,13 @@ The PREINIT script finds the config at boot by scanning `/mnt/*/.config/hailo/`,
 
 ## Uninstalling
 
-To remove the sysext and undo persistence, download `restore.sh` from the matching release and run it as root:
+To remove the sysext and undo persistence, download `uninstall.sh` (or its alias `restore.sh`) from the matching release and run it as root:
 
 ```bash
-curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/download/v25.10.3-hailo4.21.0/restore.sh | sudo bash
+curl -fsSL https://github.com/andretakagi/truenas-hailo/releases/download/v25.10.3-hailo4.21.0/uninstall.sh | sudo bash
 ```
+
+> `uninstall.sh` is a thin wrapper around `restore.sh` — both are shipped in every release and do the same thing.
 
 The script unloads `hailo_pci`, unmerges the sysext, removes `hailo.raw` from `/usr/share/truenas/sysext-extensions/`, deregisters the PREINIT init script via `midclt`, and deletes `/mnt/*/.config/hailo/`. After it finishes, a reboot returns the system to its pre-install state.
 
@@ -123,7 +125,8 @@ Use this if you're decommissioning the Hailo-8, switching forks, or recovering f
 | Script | Purpose |
 | --- | --- |
 | `scripts/install.sh` | Downloads release, fetches firmware, injects into sysext, installs, sets up persistence |
-| `scripts/restore.sh` | Uninstalls sysext, deregisters init script, cleans up persistent storage |
+| `scripts/restore.sh`   | Uninstalls sysext, deregisters init script, cleans up persistent storage |
+| `scripts/uninstall.sh` | Discoverable alias — exec's `restore.sh`                                 |
 | `scripts/hailo-preinit.sh` | Boot-time script — activates sysext before apps start. Bundled inside `hailo.raw` at `/usr/lib/hailo/hailo-preinit.sh`; `install.sh` extracts it during firmware injection and copies it to the persistent pool. |
 
 ### Build / CI (run on GitHub Actions, not shipped)
