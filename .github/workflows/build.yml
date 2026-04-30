@@ -539,7 +539,9 @@ jobs:
           require_file "usr/lib/hailo/hailo-preinit.sh"
 
           # libhailort.so.* — match the concrete ELF (not the unversioned symlink)
-          LIBHAILORT_REL=$(cd "${SMOKE_TMP}/extract" && find usr/lib/x86_64-linux-gnu -maxdepth 1 -name 'libhailort.so.*' -not -type l | head -1)
+          LIBHAILORT_REL=$(cd "${SMOKE_TMP}/extract" && \
+            find usr/lib/x86_64-linux-gnu -maxdepth 1 -name 'libhailort.so.*' -not -type l \
+            2>/dev/null | head -1) || true
           if [ -z "$LIBHAILORT_REL" ]; then
             echo "::error title=smoke-test::no concrete libhailort.so.* found in hailo.raw"
             fail=1
