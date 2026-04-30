@@ -4,6 +4,40 @@
 
 set -euo pipefail
 
+# hailo_init_script_lookup
+#
+# Locate any registered TrueNAS init script related to this fork (matches
+# "hailo-preinit", "hailo-postinit", or ".config/hailo" in the command/script
+# field). Match logic must stay aligned with install.sh's copy of this
+# function — install.sh uses it for --check probing and for finding an
+# existing entry to update; restore.sh uses it for finding an entry to
+# delete. Prints:
+#   `<id>|<when>|<enabled>`  if found
+#   ``                       (empty) if not registered
+#   `error`                  if midclt is unreachable / response unparseable
+# Always exits 0; callers branch on the printed token.
+hailo_init_script_lookup() {
+    local result
+    # Use %-formatting (not f-strings): the surrounding bash uses single
+    # quotes for the python source so we can't put `'` inside the python
+    # body, and an f-string with `"` keys would need `\"` escapes that
+    # don't parse inside f-string `{}` blocks.
+    result=$(midclt call initshutdownscript.query 2>/dev/null \
+        | python3 -c '
+import sys, json
+try:
+    scripts = json.load(sys.stdin)
+    for s in scripts:
+        cmd = s.get("command", "") or s.get("script", "")
+        if "hailo-preinit" in cmd or "hailo-postinit" in cmd or ".config/hailo" in cmd:
+            print("%s|%s|%s" % (s["id"], s.get("when", ""), s.get("enabled", False)), end="")
+            sys.exit(0)
+except Exception:
+    print("error", end="")
+' 2>/dev/null) || result=error
+    printf '%s' "$result"
+}
+
 SYSEXT_DIR="/usr/share/truenas/sysext-extensions"
 HAILO_RAW="${SYSEXT_DIR}/hailo.raw"
 HAILO_BAK="${SYSEXT_DIR}/hailo.raw.bak"
@@ -46,26 +80,22 @@ echo "=== Cleaning up persistence ==="
 # Disable hailo-load service
 systemctl disable hailo-load.service 2>/dev/null || true
 
-# Deregister init script (preinit or legacy postinit)
-INIT_ID=$(midclt call initshutdownscript.query 2>/dev/null \
-    | python3 -c "
-import sys, json
-try:
-    scripts = json.load(sys.stdin)
-    for s in scripts:
-        cmd = s.get('command', '') or s.get('script', '')
-        if 'hailo-preinit' in cmd or 'hailo-postinit' in cmd or '.config/hailo' in cmd:
-            print(s['id'], end='')
-            break
-except Exception:
-    pass
-" 2>/dev/null) || true
+# Deregister init script (preinit or legacy postinit). Treat midclt errors
+# as "not found" — there's nothing safe to do if we can't query, and a stale
+# entry the user can clean up manually beats a half-finished restore.
+INIT_LOOKUP=$(hailo_init_script_lookup)
+if [ "$INIT_LOOKUP" = "error" ]; then
+    echo "WARNING: Could not query TrueNAS middleware — skipping init script deregistration"
+    INIT_ID=""
+else
+    INIT_ID="${INIT_LOOKUP%%|*}"
+fi
 
 if [ -n "$INIT_ID" ]; then
     midclt call initshutdownscript.delete "$INIT_ID" 2>/dev/null \
         && echo "Init script deregistered (id: ${INIT_ID})" \
         || echo "WARNING: Failed to deregister init script"
-else
+elif [ "$INIT_LOOKUP" != "error" ]; then
     echo "No init script found to deregister"
 fi
 

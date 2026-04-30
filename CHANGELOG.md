@@ -14,6 +14,7 @@ This file records changes in `andretakagi/truenas-hailo` that differ from the up
 ## Sysext Activation on TrueNAS
 
 - **`systemd-sysext unmerge` before ZFS writes.** `install.sh` and `restore.sh` now `unmerge` the sysext (rather than `refresh`) before unlocking `/usr`, so the overlay does not block the remount. Without this, repeated installs/restores would intermittently fail.
+- **PREINIT script bundled in `hailo.raw`.** `scripts/hailo-preinit.sh` ships inside the sysext at `/usr/lib/hailo/hailo-preinit.sh`. `install.sh` extracts it during the existing firmware-injection unsquashfs/mksquashfs cycle and copies it to the persistent pool. Replaces the prior arrangement where `install.sh` carried an ~130-line heredoc copy of the same script, kept in sync by a `check-preinit-sync.sh` lint gate.
 
 ## Automated Workflows
 
@@ -28,7 +29,7 @@ This file records changes in `andretakagi/truenas-hailo` that differ from the up
 - **`mark_latest` input on `build.yml`.** The scheduled check dispatches with `mark_latest='false'`, so auto-built releases publish without claiming the "Latest" badge. A human still promotes a release to Latest in the GitHub UI after verifying it on Hailo-8 hardware. Manual `workflow_dispatch` invocations default to `mark_latest='true'` to preserve previous behavior.
 - **Build runner resolved per-build.** `runs-on:` is no longer pinned to `ubuntu-22.04`. The check invokes `.github/scripts/resolve-runner.sh` to look up TrueNAS's Debian release from its own published build metadata (`GITMANIFEST` → `truenas-build/conf/build.manifest`) and pick a matching Ubuntu runner. When TrueNAS rebases onto a new Debian release, the auto-bump fails loud with `::error::unknown debian_release '<codename>'` and the fix is a one-line `case` arm — no more hand-tracking which Ubuntu pairs with which TrueNAS.
 - **Auto-synced `workflow_dispatch` defaults.** Each auto-bump commit also rewrites `build.yml`'s `workflow_dispatch` defaults via `.github/scripts/sync-build-defaults.sh`, so a manual "Run workflow" in the Actions UI always pre-fills the latest tracked combination (TrueNAS version, train, HailoRT driver, runner). The substitution is structurally validated and fails loud if `build.yml`'s shape drifts.
-- **Lint workflow with shellcheck and PREINIT-sync gate.** `.github/workflows/lint.yml` runs `shellcheck --severity=warning` against all shipped shell scripts (`scripts/*.sh`, `.github/scripts/*.sh`) and runs `check-preinit-sync.sh` to ensure the standalone `hailo-preinit.sh` and the heredoc copy embedded in `install.sh` cannot drift apart.
+- **Lint workflow with shellcheck.** `.github/workflows/lint.yml` runs `shellcheck --severity=warning` against all shipped shell scripts (`scripts/*.sh`, `.github/scripts/*.sh`).
 - **Dependabot for `github-actions`.** `.github/dependabot.yml` opens weekly PRs to bump action major versions, so floating `@v4`/`@v7` references don't drift silently.
 - **`tracked-versions.json` shape gate.** `.github/scripts/validate-tracked-versions.sh` runs in `lint.yml` and fails the build if `.github/tracked-versions.json` is malformed JSON, missing `truenas.{version,train}` / `hailo.driver`, has an empty train, or has a version string that doesn't match `X.Y.Z[.W]`. Catches hand-edits before they break a scheduled `check-releases` run.
 

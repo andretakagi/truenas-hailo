@@ -120,13 +120,12 @@ Use this if you're decommissioning the Hailo-8, switching forks, or recovering f
 | --- | --- |
 | `scripts/install.sh` | Downloads release, fetches firmware, injects into sysext, installs, sets up persistence |
 | `scripts/restore.sh` | Uninstalls sysext, deregisters init script, cleans up persistent storage |
-| `scripts/hailo-preinit.sh` | Boot-time script — activates sysext before apps start. Also embedded as a heredoc in `install.sh`; the lint workflow's `check-preinit-sync.sh` fails the build if the two copies drift. |
+| `scripts/hailo-preinit.sh` | Boot-time script — activates sysext before apps start. Bundled inside `hailo.raw` at `/usr/lib/hailo/hailo-preinit.sh`; `install.sh` extracts it during firmware injection and copies it to the persistent pool. |
 
 ### Build / CI (run on GitHub Actions, not shipped)
 
 | Script | Purpose |
 | --- | --- |
-| `.github/scripts/check-preinit-sync.sh` | Lint gate — verifies the `install.sh` heredoc copy of `hailo-preinit.sh` is byte-identical to the standalone file |
 | `.github/scripts/validate-tracked-versions.sh` | Lint gate — verifies `.github/tracked-versions.json` has the shape the auto-bump workflow assumes |
 | `.github/scripts/resolve-runner.sh` | Looks up TrueNAS's Debian release from build metadata and picks the matching Ubuntu runner for `build.yml` |
 | `.github/scripts/sync-build-defaults.sh` | Auto-bump helper — rewrites `build.yml`'s `workflow_dispatch` defaults to match the latest tracked combination |

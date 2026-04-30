@@ -15,6 +15,39 @@
 
 set -euo pipefail
 
+# hailo_init_script_lookup
+#
+# Locate any registered TrueNAS init script related to this fork (matches
+# "hailo-preinit", "hailo-postinit", or ".config/hailo" in the command/script
+# field). Used by --check, by registration to find an existing entry to update,
+# and by restore.sh to find an entry to delete — match logic must stay aligned
+# across all three. Prints:
+#   `<id>|<when>|<enabled>`  if found (when=PREINIT/POSTINIT/...; enabled=True/False)
+#   ``                       (empty) if no matching script is registered
+#   `error`                  if midclt is unreachable / response unparseable
+# Always exits 0; callers branch on the printed token.
+hailo_init_script_lookup() {
+    local result
+    # Use %-formatting (not f-strings): the surrounding bash uses single
+    # quotes for the python source so we can't put `'` inside the python
+    # body, and an f-string with `"` keys would need `\"` escapes that
+    # don't parse inside f-string `{}` blocks.
+    result=$(midclt call initshutdownscript.query 2>/dev/null \
+        | python3 -c '
+import sys, json
+try:
+    scripts = json.load(sys.stdin)
+    for s in scripts:
+        cmd = s.get("command", "") or s.get("script", "")
+        if "hailo-preinit" in cmd or "hailo-postinit" in cmd or ".config/hailo" in cmd:
+            print("%s|%s|%s" % (s["id"], s.get("when", ""), s.get("enabled", False)), end="")
+            sys.exit(0)
+except Exception:
+    print("error", end="")
+' 2>/dev/null) || result=error
+    printf '%s' "$result"
+}
+
 # do_check: read-only probe of an existing install. Exits 0 if all checks
 # pass (warnings allowed), 1 if any check fails. Used by --check.
 do_check() {
@@ -95,30 +128,25 @@ do_check() {
 
     # 8. PREINIT registered with TrueNAS middleware (read-only midclt query)
     if command -v midclt >/dev/null 2>&1; then
-        local registered
-        registered=$(midclt call initshutdownscript.query 2>/dev/null \
-            | python3 -c "
-import sys, json
-try:
-    scripts = json.load(sys.stdin)
-    for s in scripts:
-        cmd = s.get('command', '') or s.get('script', '')
-        if 'hailo-preinit' in cmd or '.config/hailo' in cmd:
-            if s.get('when') == 'PREINIT' and s.get('enabled'):
-                print('yes', end=''); sys.exit(0)
-            print('present-but-misconfigured', end=''); sys.exit(0)
-    print('no', end='')
-except Exception:
-    print('error', end='')
-" 2>/dev/null) || registered=error
-        case "$registered" in
-            yes)  record_pass "PREINIT script registered with TrueNAS middleware (PREINIT, enabled)" ;;
-            no)   record_fail "No init script registered for hailo" "re-run install.sh" ;;
-            present-but-misconfigured)
-                  record_warn "Init script registered but not as enabled PREINIT" \
-                      "re-run install.sh to fix" ;;
-            error|*) record_warn "Could not query TrueNAS middleware" \
-                         "run with sudo on TrueNAS SCALE" ;;
+        local lookup script_when script_enabled
+        lookup=$(hailo_init_script_lookup)
+        case "$lookup" in
+            error)
+                record_warn "Could not query TrueNAS middleware" \
+                    "run with sudo on TrueNAS SCALE"
+                ;;
+            "")
+                record_fail "No init script registered for hailo" "re-run install.sh"
+                ;;
+            *)
+                IFS='|' read -r _ script_when script_enabled <<<"$lookup"
+                if [ "$script_when" = "PREINIT" ] && [ "$script_enabled" = "True" ]; then
+                    record_pass "PREINIT script registered with TrueNAS middleware (PREINIT, enabled)"
+                else
+                    record_warn "Init script registered but not as enabled PREINIT" \
+                        "re-run install.sh to fix"
+                fi
+                ;;
         esac
     else
         record_warn "midclt not available — skipping middleware check" \
@@ -219,7 +247,7 @@ if [ "$CHECK_MODE" = "1" ]; then
 fi
 
 cleanup() {
-    rm -f /tmp/hailo.raw /tmp/hailo.raw.sha256 /tmp/hailo8_fw.bin
+    rm -f /tmp/hailo.raw /tmp/hailo.raw.sha256 /tmp/hailo8_fw.bin /tmp/hailo-preinit.sh
     rm -rf /tmp/hailo-sysext-unpack
 }
 trap cleanup EXIT INT TERM
@@ -335,10 +363,27 @@ echo "Firmware downloaded: $(ls -lh /tmp/hailo8_fw.bin)"
 # --- Inject firmware into hailo.raw squashfs ---
 echo "Injecting firmware into hailo.raw..."
 if command -v unsquashfs &>/dev/null && command -v mksquashfs &>/dev/null; then
+    # The cleanup trap normally clears this, but a SIGKILL'd or panic'd
+    # prior run can leave it behind — unsquashfs -d refuses to overwrite.
+    rm -rf /tmp/hailo-sysext-unpack
     unsquashfs -d /tmp/hailo-sysext-unpack /tmp/hailo.raw
     mkdir -p /tmp/hailo-sysext-unpack/usr/lib/firmware/hailo
     cp /tmp/hailo8_fw.bin /tmp/hailo-sysext-unpack/usr/lib/firmware/hailo/hailo8_fw.bin
-    mksquashfs /tmp/hailo-sysext-unpack /tmp/hailo.raw -noappend -comp zstd
+    # Pull the PREINIT script out of the unpacked sysext while we have it
+    # mounted. We need it later (~PERSIST_DIR setup), but the sysext is the
+    # source of truth — whatever hailo.raw the user installs ships with the
+    # matching preinit. Older releases (pre-bundling) won't have it; refuse
+    # rather than silently ship without persistence.
+    BUNDLED_PREINIT="/tmp/hailo-sysext-unpack/usr/lib/hailo/hailo-preinit.sh"
+    if [ ! -f "$BUNDLED_PREINIT" ]; then
+        echo "ERROR: hailo-preinit.sh not found in sysext at /usr/lib/hailo/hailo-preinit.sh" >&2
+        echo "  This hailo.raw was built before the preinit script was bundled in." >&2
+        echo "  Re-fetch a current release: https://github.com/${REPO}/releases/latest" >&2
+        exit 1
+    fi
+    cp "$BUNDLED_PREINIT" /tmp/hailo-preinit.sh
+    chmod +x /tmp/hailo-preinit.sh
+    mksquashfs /tmp/hailo-sysext-unpack /tmp/hailo.raw -noappend -comp zstd -all-root
     rm -rf /tmp/hailo-sysext-unpack
     echo "Firmware injected into hailo.raw"
 else
@@ -458,167 +503,30 @@ else
     echo -n "$REPO" > "${PERSIST_DIR}/.hailo-repo"
 fi
 
-# --- Write PREINIT script to persistent storage ---
-# NOTE: This is an inline copy of scripts/hailo-preinit.sh.
-# Keep both copies in sync when making changes.
-echo "Writing PREINIT script..."
+# --- Install PREINIT script to persistent storage ---
+# Source is /tmp/hailo-preinit.sh, which we extracted from the unsquashed
+# sysext earlier (see "Inject firmware" block). Bundling the script in the
+# sysext means the hailo.raw release artifact is self-contained — whatever
+# .raw the user installs ships with the matching preinit.
+echo "Installing PREINIT script..."
 
 # Clean up old postinit script if present
 if_real rm -f "${PERSIST_DIR}/hailo-postinit.sh"
 
-if [ "$DRY_RUN" = "1" ]; then
-    echo "[dry-run] would: write PREINIT script to ${PERSIST_DIR}/hailo-preinit.sh and chmod +x"
-else
-    cat > "${PERSIST_DIR}/hailo-preinit.sh" <<'PREINIT_EOF'
-#!/usr/bin/env bash
-# TrueNAS PREINIT script: activates hailo.raw sysext on every boot.
-# Runs before middleware starts, so the Hailo device is ready before
-# app containers (e.g., Frigate) launch.
-#
-# Stored on persistent pool; registered via midclt during install.
-# Idempotent — safe to run on every boot.
-#
-# The hailo.raw squashfs contains firmware (injected at install time),
-# so restoring the sysext also restores firmware. No separate firmware
-# handling is needed.
-
-set -uo pipefail
-
-log() {
-    echo "[hailo-preinit] $*"
-    logger -t hailo-preinit "$*" 2>/dev/null || true
-}
-
-# --- Find persistent config via glob ---
-PERSIST_DIR=""
-for d in /mnt/*/.config/hailo; do
-    [ -d "$d" ] && PERSIST_DIR="$d" && break
-done
-
-if [ -z "$PERSIST_DIR" ]; then
-    log "No persistent config found at /mnt/*/.config/hailo/, nothing to do"
-    exit 0
-fi
-
-HAILO_RAW_BACKUP="${PERSIST_DIR}/hailo.raw"
-SYSEXT_TARGET="/usr/share/truenas/sysext-extensions/hailo.raw"
-
-# --- Determine source repo (for error messages pointing users at releases) ---
-# Written at install time by install.sh. Falls back to upstream.
-HAILO_REPO_FILE="${PERSIST_DIR}/.hailo-repo"
-if [ -f "$HAILO_REPO_FILE" ]; then
-    HAILO_REPO=$(tr -d '[:space:]' < "$HAILO_REPO_FILE")
-fi
-HAILO_REPO="${HAILO_REPO:-scyto/truenas-hailo}"
-
-if [ ! -f "$HAILO_RAW_BACKUP" ]; then
-    log "No hailo.raw backup at ${HAILO_RAW_BACKUP}, nothing to do"
-    exit 0
-fi
-
-# --- Compare checksums and reinstall if needed ---
-NEED_COPY=true
-if [ -f "$SYSEXT_TARGET" ]; then
-    INSTALLED_SUM=$(sha256sum "$SYSEXT_TARGET" | awk '{print $1}')
-    BACKUP_SUM=$(sha256sum "$HAILO_RAW_BACKUP" | awk '{print $1}')
-    if [ "$INSTALLED_SUM" = "$BACKUP_SUM" ]; then
-        log "hailo.raw already matches backup, skipping copy"
-        NEED_COPY=false
-    else
-        log "hailo.raw differs from backup (update detected), reinstalling..."
-    fi
-else
-    log "hailo.raw missing, installing from backup..."
-fi
-
-if [ "$NEED_COPY" = true ]; then
-    log "Removing old hailo sysext..."
-    rm -f /run/extensions/hailo.raw
-    systemd-sysext unmerge 2>/dev/null || true
-
-    log "Making /usr writable..."
-    USR_DATASET=$(zfs list -H -o name /usr 2>/dev/null)
-    if [ -n "$USR_DATASET" ]; then
-        zfs set readonly=off "$USR_DATASET"
-    fi
-
-    log "Copying hailo.raw from backup..."
-    if ! cp "$HAILO_RAW_BACKUP" "$SYSEXT_TARGET"; then
-        log "ERROR: Failed to copy hailo.raw from backup"
-        [ -n "$USR_DATASET" ] && zfs set readonly=on "$USR_DATASET" 2>/dev/null || true
-        exit 1
-    fi
-
-    if [ -n "$USR_DATASET" ]; then
-        zfs set readonly=on "$USR_DATASET"
-    fi
-fi
-
-# --- Always activate sysext (symlink is on tmpfs, gone after reboot) ---
-log "Activating hailo sysext..."
-mkdir -p /run/extensions
-ln -sf "$SYSEXT_TARGET" /run/extensions/hailo.raw
-systemd-sysext refresh
-ldconfig
-
-# --- Check kernel version matches the module in the sysext ---
-HAILO_KO="/usr/lib/modules/$(uname -r)/extra/hailo_pci.ko"
-if [ -f "$HAILO_KO" ]; then
-    log "Loading Hailo module..."
-    insmod "$HAILO_KO" || log "WARNING: insmod hailo_pci failed (device may not be present)"
-else
-    # Module path doesn't match running kernel — likely a TrueNAS update changed the kernel
-    SYSEXT_KVER=""
-    running_kver=$(uname -r)
-    for d in /usr/lib/modules/*/; do
-        [ -d "$d" ] || continue
-        name=${d%/}
-        name=${name##*/}
-        if [ "$name" != "$running_kver" ]; then
-            SYSEXT_KVER="$name"
-            break
-        fi
-    done
-    if [ -n "$SYSEXT_KVER" ]; then
-        log "ERROR: Kernel version mismatch — running ${running_kver} but sysext has module for ${SYSEXT_KVER}"
-        log "ERROR: TrueNAS was likely updated. Download a new hailo.raw release matching ${running_kver}"
-        log "ERROR: Visit https://github.com/${HAILO_REPO}/releases"
-    else
-        log "WARNING: hailo_pci.ko not found at ${HAILO_KO}"
-    fi
-fi
-
-# --- Reload udev rules from sysext so /dev/hailo0 gets correct permissions ---
-log "Reloading udev rules..."
-udevadm control --reload-rules 2>/dev/null || true
-if [ -e /dev/hailo0 ]; then
-    udevadm trigger /dev/hailo0 2>/dev/null || true
-fi
-
-log "Done"
-exit 0
-PREINIT_EOF
-    chmod +x "${PERSIST_DIR}/hailo-preinit.sh"
-fi
+if_real cp /tmp/hailo-preinit.sh "${PERSIST_DIR}/hailo-preinit.sh"
+if_real chmod +x "${PERSIST_DIR}/hailo-preinit.sh"
 
 # --- Register PREINIT script via midclt ---
 PREINIT_SCRIPT="${PERSIST_DIR}/hailo-preinit.sh"
 echo "Registering PREINIT script..."
 
-# Find any existing hailo init script (postinit or preinit)
-EXISTING_ID=$(midclt call initshutdownscript.query 2>/dev/null \
-    | python3 -c "
-import sys, json
-try:
-    scripts = json.load(sys.stdin)
-    for s in scripts:
-        cmd = s.get('command', '') or s.get('script', '')
-        if 'hailo-preinit' in cmd or 'hailo-postinit' in cmd or '.config/hailo' in cmd:
-            print(s['id'], end='')
-            break
-except Exception:
-    pass
-" 2>/dev/null)
+# Find any existing hailo init script (postinit or preinit). A midclt error
+# is treated the same as not-found here: the create-branch will then call
+# initshutdownscript.create, which fails the same way and exits 1 — no
+# silent double-registration.
+EXISTING_LOOKUP=$(hailo_init_script_lookup)
+[ "$EXISTING_LOOKUP" = "error" ] && EXISTING_LOOKUP=""
+EXISTING_ID="${EXISTING_LOOKUP%%|*}"
 
 # Build the payload via python3 -> json.dumps so PREINIT_SCRIPT is escaped
 # correctly even if the path ever grows characters that are special to JSON.
