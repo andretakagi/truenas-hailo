@@ -34,6 +34,7 @@ This file records changes in `andretakagi/truenas-hailo` that differ from the up
 
 - README and install/restore docs point at `andretakagi/truenas-hailo` releases instead of upstream.
 - README credits `scyto/truenas-hailo` as the upstream project.
+- `docs/troubleshooting.md` documents the kernel-mismatch recovery flow that the PREINIT script reports after a TrueNAS upgrade. README and install docs cross-link to it.
 
 ## Known constraints
 

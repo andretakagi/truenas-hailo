@@ -93,3 +93,9 @@ Use this if you're decommissioning the Hailo-8, switching forks, or recovering f
 | `scripts/install.sh` | Downloads release, fetches firmware, injects into sysext, installs, sets up persistence |
 | `scripts/restore.sh` | Uninstalls sysext, deregisters init script, cleans up persistent storage |
 | `scripts/hailo-preinit.sh` | Boot-time script — activates sysext before apps start (also embedded in install.sh) |
+
+
+## Troubleshooting
+
+See [troubleshooting.md](troubleshooting.md) for recovery from
+kernel-mismatch errors after TrueNAS upgrades.

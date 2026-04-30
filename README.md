@@ -111,7 +111,7 @@ model:
 
 ## Important Notes
 
-- The kernel module must match the exact TrueNAS kernel version. If you update TrueNAS, you need a matching sysext build.
+- The kernel module must match the exact TrueNAS kernel version. If you update TrueNAS, you need a matching sysext build — see [docs/troubleshooting.md](docs/troubleshooting.md#kernel-version-mismatch-after-a-truenas-update) for recovery steps.
 - The `hailort-drivers` repo uses the **`hailo8` branch** for Hailo-8 support. The `master` branch only supports Hailo-10/15.
 - Secure Boot: The unsigned kernel module may require disabling Secure Boot.
 - If firmware download fails during installation, the script aborts — the sysext will not be installed without firmware.
