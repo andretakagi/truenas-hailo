@@ -263,8 +263,12 @@ jobs:
           # Save real kernel version for later steps
           echo "$REAL_KVER" | sudo tee /tmp/kernel-headers/.real-kver
 
-          # Cleanup
+          # Cleanup: /tmp/rootfs is a loop mount on the fallback path but an
+          # unsquashfs extraction on the primary path. Try umount first (no-op
+          # when it's a plain directory), then rm -rf to cover the extraction
+          # case. /tmp/update-contents is only created on the primary path.
           sudo umount /tmp/rootfs 2>/dev/null || true
+          sudo rm -rf /tmp/rootfs /tmp/update-contents
           sudo umount /tmp/iso 2>/dev/null || true
 
           echo "Kernel headers extracted successfully"
@@ -297,13 +301,19 @@ jobs:
           echo "Header package version: ${KVER}"
           echo "KVER=${KVER}" >> "$GITHUB_ENV"
 
-          # Read real kernel version (what uname -r returns on the target)
+          # Read real kernel version (what uname -r returns on the target).
+          # Do NOT fall back to KVER: the header package name (e.g.
+          # truenas-production-amd64) is not a kernel release string, and
+          # using it puts modules at the wrong /lib/modules/<kver>/ path.
+          # A missing .real-kver means the cache is corrupted or pre-dates
+          # the v3 key scheme — fail loud so the operator busts the cache.
           REAL_KVER=""
           if [ -f "/tmp/kernel-headers/.real-kver" ]; then
-            REAL_KVER=$(cat /tmp/kernel-headers/.real-kver | tr -d '[:space:]')
+            REAL_KVER=$(tr -d '[:space:]' < /tmp/kernel-headers/.real-kver)
           fi
           if [ -z "$REAL_KVER" ]; then
-            REAL_KVER="$KVER"
+            echo "::error title=kernel-version::.real-kver missing or empty in cached kernel headers. Bust the kernel-headers cache (key: kernel-headers-v3-${{ inputs.truenas_version }}) and re-run."
+            exit 1
           fi
           echo "Real kernel version: ${REAL_KVER}"
           echo "REAL_KVER=${REAL_KVER}" >> "$GITHUB_ENV"

@@ -31,6 +31,7 @@ jobs:
             scripts/install.sh \
             scripts/hailo-preinit.sh \
             scripts/restore.sh \
+            scripts/uninstall.sh \
             .github/scripts/*.sh
 
   tracked-versions:

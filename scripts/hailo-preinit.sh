@@ -93,7 +93,10 @@ if [ "$NEED_COPY" = true ]; then
     log "Making /usr writable..."
     USR_DATASET=$(zfs list -H -o name /usr 2>/dev/null)
     if [ -n "$USR_DATASET" ]; then
-        zfs set readonly=off "$USR_DATASET"
+        if ! zfs set readonly=off "$USR_DATASET"; then
+            log "ERROR: Failed to make ${USR_DATASET} writable"
+            exit 1
+        fi
         USR_WAS_WRITABLE=1
     fi
 
