@@ -29,7 +29,7 @@ sudo bash install.sh --repo=andretakagi/truenas-hailo /tmp/hailo-input.raw
 
 | Option | Description |
 | --- | --- |
-| `--repo=OWNER/NAME` | GitHub repo to download release from (default: `scyto/truenas-hailo`). Pass `--repo=andretakagi/truenas-hailo` or set `HAILO_REPO` to install from this fork. |
+| `--repo=OWNER/NAME` | GitHub repo to download release from (default: `andretakagi/truenas-hailo`). Pass `--repo=scyto/truenas-hailo` or set `HAILO_REPO` to install from upstream — but note that upstream's `tracked-versions.json` doesn't carry `hailo.firmware_sha256`, so install will hard-fail at firmware verification. |
 | `--pool=NAME` | ZFS pool for persistent config (e.g., `fast`) |
 | `--persist-path=PATH` | Exact path for persistent config directory |
 | `--check` | Probe an existing install (read-only) and report status. Exits 0 if all checks pass, 1 otherwise. |

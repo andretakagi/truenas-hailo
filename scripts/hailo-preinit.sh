@@ -47,12 +47,15 @@ HAILO_RAW_BACKUP="${PERSIST_DIR}/hailo.raw"
 SYSEXT_TARGET="/usr/share/truenas/sysext-extensions/hailo.raw"
 
 # --- Determine source repo (for error messages pointing users at releases) ---
-# Written at install time by install.sh. Falls back to upstream.
+# Written at install time by install.sh. Falls back to this fork to match
+# install.sh's default — error messages for an install with no .hailo-repo
+# marker point at the same releases page the install came from. The
+# upstream-pr/* branches override this default back to scyto/truenas-hailo.
 HAILO_REPO_FILE="${PERSIST_DIR}/.hailo-repo"
 if [ -f "$HAILO_REPO_FILE" ]; then
     HAILO_REPO=$(tr -d '[:space:]' < "$HAILO_REPO_FILE")
 fi
-HAILO_REPO="${HAILO_REPO:-scyto/truenas-hailo}"
+HAILO_REPO="${HAILO_REPO:-andretakagi/truenas-hailo}"
 
 if [ ! -f "$HAILO_RAW_BACKUP" ]; then
     log "No hailo.raw backup at ${HAILO_RAW_BACKUP}, nothing to do"

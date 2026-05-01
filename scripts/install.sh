@@ -216,9 +216,13 @@ if_real() {
     fi
 }
 
-# REPO can be overridden via --repo=OWNER/NAME or HAILO_REPO env var
-# Default falls back to upstream
-REPO="${HAILO_REPO:-scyto/truenas-hailo}"
+# REPO can be overridden via --repo=OWNER/NAME or HAILO_REPO env var.
+# Default points at this fork because main ships fork-only behavior
+# (consolidated tracked-versions.json, hailo.firmware_sha256 verification)
+# that upstream doesn't carry — a bare default targeting upstream would
+# hard-fail at firmware verification. The upstream-pr/* branches override
+# this default back to scyto/truenas-hailo for PR submission.
+REPO="${HAILO_REPO:-andretakagi/truenas-hailo}"
 SYSEXT_DIR="/usr/share/truenas/sysext-extensions"
 HAILO_RAW="${SYSEXT_DIR}/hailo.raw"
 
@@ -249,7 +253,7 @@ for arg in "$@"; do
             echo "Usage: sudo ./install.sh [OPTIONS] [path-to-hailo.raw]"
             echo ""
             echo "Options:"
-            echo "  --repo=OWNER/NAME        GitHub repo to download release from (default: scyto/truenas-hailo)"
+            echo "  --repo=OWNER/NAME        GitHub repo to download release from (default: andretakagi/truenas-hailo)"
             echo "                           Can also be set via HAILO_REPO env var."
             echo "  --pool=NAME              ZFS pool for persistent config (e.g., fast)"
             echo "  --persist-path=PATH      Exact path for persistent config"
