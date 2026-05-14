@@ -716,7 +716,7 @@ jobs:
           cat release-notes.md
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.resolve.outputs.truenas_version }}-hailo${{ needs.resolve.outputs.hailo_driver_version }}
           name: "TrueNAS ${{ needs.resolve.outputs.truenas_version }} - Hailo ${{ needs.resolve.outputs.hailo_driver_version }}"
